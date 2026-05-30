@@ -70,6 +70,12 @@ from citeevidence.contexts.resolve import (
 from citeevidence.datasets.multicite import load_multicite
 from citeevidence.datasets.normalize import write_labeled_contexts
 from citeevidence.datasets.scicite import load_scicite
+from citeevidence.review import (
+    DEFAULT_MANUAL_REVIEW_CLEAN_PATH,
+    DEFAULT_MANUAL_REVIEW_NEEDS_CHECK_PATH,
+    DEFAULT_MANUAL_REVIEW_REPORT,
+    ingest_manual_resolution_review,
+)
 
 app = typer.Typer(
     add_completion=False,
@@ -83,6 +89,7 @@ datasets_app = typer.Typer(
     help="Load and normalize citation-context datasets.",
     no_args_is_help=True,
 )
+review_app = typer.Typer(help="Ingest human review files.", no_args_is_help=True)
 console = Console()
 error_console = Console(stderr=True)
 DEFAULT_PROJECT_CONFIG = Path("configs/project.yaml")
@@ -93,6 +100,7 @@ app.add_typer(acl_app, name="acl")
 app.add_typer(config_app, name="config")
 app.add_typer(contexts_app, name="contexts")
 app.add_typer(datasets_app, name="datasets")
+app.add_typer(review_app, name="review")
 
 
 @app.callback()
@@ -728,6 +736,50 @@ def audit_final_resolved(
         f"Audited {metrics['total_rows']} resolved rows. "
         f"Analysis-ready strong rows: {metrics['analysis_ready_rows']}. "
         f"Wrote {out}, {flags}, {strong_sample}, {manual_sample}, and {analysis_ready}."
+    )
+
+
+@review_app.command("ingest-resolution")
+def ingest_resolution_review(
+    strong_sample: Annotated[
+        Path,
+        typer.Option("--strong-sample", help="Path to strong resolved review sample CSV."),
+    ],
+    manual_sample: Annotated[
+        Path,
+        typer.Option("--manual-sample", help="Path to mixed manual review sample CSV."),
+    ],
+    out: Annotated[
+        Path,
+        typer.Option("--out", help="Output clean manual review parquet path."),
+    ] = DEFAULT_MANUAL_REVIEW_CLEAN_PATH,
+    needs_check: Annotated[
+        Path,
+        typer.Option("--needs-check", help="Output rows needing reviewer cleanup CSV path."),
+    ] = DEFAULT_MANUAL_REVIEW_NEEDS_CHECK_PATH,
+    report: Annotated[
+        Path,
+        typer.Option("--report", help="Output manual resolution review report path."),
+    ] = DEFAULT_MANUAL_REVIEW_REPORT,
+) -> None:
+    """Ingest manual resolution review CSVs and report precision."""
+    try:
+        metrics = ingest_manual_resolution_review(
+            strong_sample_path=strong_sample,
+            manual_sample_path=manual_sample,
+            out_path=out,
+            needs_check_path=needs_check,
+            report_path=report,
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        error_console.print(f"[red]Failed to ingest manual resolution review:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    console.print(
+        f"Ingested {metrics['total_rows']} review rows; "
+        f"reviewed={metrics['reviewed_rows']}, "
+        f"unreviewed={metrics['unreviewed_rows']}. "
+        f"Wrote {out}, {needs_check}, and {report}."
     )
 
 
