@@ -73,7 +73,17 @@ For new section-aware extraction, use the pre-resolution path:
 ```bash
 citeevidence contexts extract-sectioned \
   --sections data/interim/acl_sections_sectioned_normalized.parquet \
-  --out data/processed/citation_contexts_sectioned.parquet
+  --out data/processed/citation_contexts_sectioned.parquet \
+  --report reports/citation_contexts_sectioned_extraction_report.md
+
+citeevidence contexts resolve-markers \
+  --contexts data/processed/citation_contexts_sectioned.parquet \
+  --aligned-graph data/interim/acl_citation_graph_aligned.parquet \
+  --crosswalk data/interim/acl_id_crosswalk.parquet \
+  --out data/processed/citation_contexts_sectioned_resolved_pilot.parquet \
+  --failures data/processed/citation_marker_resolution_sectioned_pilot_failures.parquet \
+  --report reports/citation_marker_resolution_sectioned_pilot_report.md \
+  --limit 100000
 ```
 
 `citeevidence contexts extract` also defaults to no bibliography. Use `--use-bibliography --references PATH` only with a true local bibliography table. The current `data/interim/acl_references.parquet` is kept for backward compatibility, but it is not authoritative for ACL-OCL citation attribution.

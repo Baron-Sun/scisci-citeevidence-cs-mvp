@@ -47,7 +47,11 @@ from citeevidence.acl.section_normalization import (
 )
 from citeevidence.config import ConfigLoadError, load_project_config
 from citeevidence.contexts.audit import DEFAULT_CONTEXT_FLAGS_PATH, audit_citation_contexts
-from citeevidence.contexts.extract import extract_citation_contexts
+from citeevidence.contexts.extract import (
+    DEFAULT_SECTIONED_EXTRACTION_REPORT,
+    extract_citation_contexts,
+    write_context_extraction_report,
+)
 from citeevidence.contexts.resolve import (
     DEFAULT_RESOLUTION_BASELINE_PATH,
     DEFAULT_RESOLUTION_FAILURES_PATH,
@@ -518,6 +522,10 @@ def extract_sectioned_contexts(
             help="Maximum characters retained in bounded context windows.",
         ),
     ] = 2000,
+    report: Annotated[
+        Path,
+        typer.Option("--report", help="Output sectioned extraction report path."),
+    ] = DEFAULT_SECTIONED_EXTRACTION_REPORT,
 ) -> None:
     """Extract pre-resolution citation contexts from section-aware ACL paragraphs."""
     try:
@@ -528,11 +536,21 @@ def extract_sectioned_contexts(
             max_window_chars=max_window_chars,
             use_bibliography=False,
         )
+        write_context_extraction_report(
+            contexts=contexts,
+            sections_path=sections,
+            out_path=out,
+            report_path=report,
+            max_window_chars=max_window_chars,
+        )
     except (FileNotFoundError, OSError, ValueError) as exc:
         error_console.print(f"[red]Failed to extract sectioned citation contexts:[/red] {exc}")
         raise typer.Exit(1) from exc
 
-    console.print(f"Wrote {len(contexts)} pre-resolution citation contexts to {out}.")
+    console.print(
+        f"Wrote {len(contexts)} pre-resolution citation contexts to {out}. "
+        f"Report: {report}."
+    )
 
 
 @contexts_app.command("audit")

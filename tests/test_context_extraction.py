@@ -6,7 +6,11 @@ import pandas as pd
 from typer.testing import CliRunner
 
 from citeevidence.cli import app
-from citeevidence.contexts.extract import CONTEXT_COLUMNS, extract_citation_contexts
+from citeevidence.contexts.extract import (
+    CONTEXT_COLUMNS,
+    extract_citation_contexts,
+    write_context_extraction_report,
+)
 
 
 def _write_inputs(
@@ -171,6 +175,42 @@ def test_pre_resolution_extraction_without_references(tmp_path: Path) -> None:
     assert numeric["attribution_status"] == "numeric_unresolved_pre_resolution"
     assert author_year["attribution_status"] == "author_year_unresolved_pre_resolution"
     assert set(grouped["attribution_status"]) == {"multi_citation_group"}
+
+
+def test_sectioned_extraction_uses_normalized_section_and_report(tmp_path: Path) -> None:
+    sections_path = tmp_path / "acl_sections_sectioned_normalized.parquet"
+    out_path = tmp_path / "citation_contexts_sectioned.parquet"
+    report_path = tmp_path / "citation_contexts_sectioned_extraction_report.md"
+    pd.DataFrame(
+        [
+            {
+                "paper_id": "p1",
+                "section_name": "Methodology",
+                "normalized_section": "method",
+                "section_index": 0,
+                "paragraph_id": "p1_s0000_p0000",
+                "paragraph_index": 0,
+                "paragraph_text": "We use the baseline [1].",
+            }
+        ]
+    ).to_parquet(sections_path, index=False)
+
+    contexts = extract_citation_contexts(
+        sections_path=sections_path,
+        out_path=out_path,
+        max_window_chars=300,
+    )
+    metrics = write_context_extraction_report(
+        contexts=contexts,
+        sections_path=sections_path,
+        out_path=out_path,
+        report_path=report_path,
+        max_window_chars=300,
+    )
+
+    assert contexts.iloc[0]["section"] == "method"
+    assert metrics["duplicate_context_id"] == 0
+    assert "Normalized Section Distribution" in report_path.read_text(encoding="utf-8")
 
 
 def test_multiple_citations_in_one_paragraph(tmp_path: Path) -> None:
@@ -395,17 +435,22 @@ def test_contexts_extract_cli(tmp_path: Path) -> None:
 
 
 def test_contexts_extract_sectioned_cli_without_references(tmp_path: Path) -> None:
-    sections_path, _, out_path = _write_inputs(
-        tmp_path,
-        sections=[
+    sections_path = tmp_path / "acl_sections_sectioned_normalized.parquet"
+    out_path = tmp_path / "citation_contexts_sectioned.parquet"
+    report_path = tmp_path / "citation_contexts_sectioned_extraction_report.md"
+    pd.DataFrame(
+        [
             {
                 "paper_id": "p1",
                 "section_name": "Methods",
+                "normalized_section": "method",
+                "section_index": 0,
                 "paragraph_id": "p1-para-sectioned",
+                "paragraph_index": 0,
                 "paragraph_text": "We use the baseline method [1].",
             }
-        ],
-    )
+        ]
+    ).to_parquet(sections_path, index=False)
     runner = CliRunner()
 
     result = runner.invoke(
@@ -419,11 +464,15 @@ def test_contexts_extract_sectioned_cli_without_references(tmp_path: Path) -> No
             str(out_path),
             "--max-window-chars",
             "300",
+            "--report",
+            str(report_path),
         ],
     )
 
     assert result.exit_code == 0
     assert "pre-resolution citation contexts" in result.stdout
+    assert report_path.exists()
     contexts = pd.read_parquet(out_path)
     assert contexts.shape == (1, len(CONTEXT_COLUMNS))
+    assert contexts.iloc[0]["section"] == "method"
     assert contexts.iloc[0]["attribution_status"] == "numeric_unresolved_pre_resolution"

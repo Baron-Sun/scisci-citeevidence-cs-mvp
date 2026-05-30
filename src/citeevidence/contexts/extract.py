@@ -7,9 +7,13 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import pyarrow.parquet as pq
 
 from citeevidence.schemas import AttributionStatus
 
+DEFAULT_SECTIONED_EXTRACTION_REPORT = Path(
+    "reports/citation_contexts_sectioned_extraction_report.md"
+)
 CONTEXT_COLUMNS = [
     "context_id",
     "citing_paper_id",
@@ -31,6 +35,7 @@ CONTEXT_COLUMNS = [
 ]
 
 SECTION_COLUMNS = ["paper_id", "section_name", "paragraph_id", "paragraph_text"]
+NORMALIZED_SECTION_COLUMN = "normalized_section"
 REFERENCE_COLUMNS = [
     "citing_paper_id",
     "reference_key",
@@ -112,7 +117,7 @@ def extract_citation_contexts(
     if max_window_chars < 100:
         raise ValueError("max_window_chars must be at least 100")
 
-    sections = pd.read_parquet(sections_path, columns=SECTION_COLUMNS)
+    sections = _read_sections(sections_path)
     paper_ids = set(sections["paper_id"].dropna().astype(str))
     if use_bibliography:
         if references_path is None:
@@ -127,7 +132,7 @@ def extract_citation_contexts(
         rows.extend(
             _extract_from_section(
                 paper_id=str(section.paper_id),
-                section_name=_none_if_missing(section.section_name),
+                section_name=_section_label(section),
                 paragraph_id=str(section.paragraph_id),
                 paragraph_text=_clean_text(section.paragraph_text),
                 references=reference_index.get(str(section.paper_id), {}),
@@ -141,6 +146,79 @@ def extract_citation_contexts(
     output.parent.mkdir(parents=True, exist_ok=True)
     contexts.to_parquet(output, index=False)
     return contexts
+
+
+def write_context_extraction_report(
+    *,
+    contexts: pd.DataFrame,
+    sections_path: str | Path,
+    out_path: str | Path,
+    report_path: str | Path,
+    max_window_chars: int,
+) -> dict[str, Any]:
+    """Write a markdown report for extracted citation contexts."""
+    metrics = {
+        "context_rows": int(len(contexts)),
+        "unique_context_id": int(contexts["context_id"].nunique(dropna=True)),
+        "duplicate_context_id": int(
+            len(contexts) - contexts["context_id"].nunique(dropna=True)
+        ),
+        "sentence_text_in_context_window_s3_rate": _substring_rate(
+            contexts,
+            needle="sentence_text",
+            haystack="context_window_s3",
+        ),
+        "sentence_text_in_context_window_paragraph_rate": _substring_rate(
+            contexts,
+            needle="sentence_text",
+            haystack="context_window_paragraph",
+        ),
+        "citation_marker_in_sentence_text_rate": _substring_rate(
+            contexts,
+            needle="citation_marker",
+            haystack="sentence_text",
+        ),
+        "marker_type_distribution": _value_distribution(contexts, "marker_type"),
+        "attribution_status_distribution": _value_distribution(
+            contexts,
+            "attribution_status",
+        ),
+        "normalized_section_distribution": _value_distribution(contexts, "section"),
+        "citation_group_size_distribution": _value_distribution(
+            contexts,
+            "citation_group_size",
+        ),
+        "samples": _sample_context_rows(contexts, 20),
+    }
+    report = _build_extraction_report(
+        metrics=metrics,
+        sections_path=Path(sections_path),
+        out_path=Path(out_path),
+        max_window_chars=max_window_chars,
+    )
+    output = Path(report_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(report, encoding="utf-8")
+    return metrics
+
+
+def _read_sections(sections_path: str | Path) -> pd.DataFrame:
+    path = Path(sections_path)
+    available = set(pq.ParquetFile(path).schema_arrow.names)
+    missing = [column for column in SECTION_COLUMNS if column not in available]
+    if missing:
+        raise ValueError(
+            "Sections parquet is missing required columns: " + ", ".join(missing)
+        )
+    columns = [*SECTION_COLUMNS]
+    if NORMALIZED_SECTION_COLUMN in available:
+        columns.append(NORMALIZED_SECTION_COLUMN)
+    return pd.read_parquet(path, columns=columns)
+
+
+def _section_label(section: Any) -> str | None:
+    normalized = _none_if_missing(getattr(section, NORMALIZED_SECTION_COLUMN, None))
+    return normalized or _none_if_missing(section.section_name)
 
 
 def _load_references(references_path: str | Path, paper_ids: set[str]) -> pd.DataFrame:
@@ -609,6 +687,163 @@ def _pre_resolution_reference_keys(marker: str, components: list[str]) -> list[s
         digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
         keys.append(f"marker_component_{index}_{digest}")
     return keys
+
+
+def _build_extraction_report(
+    *,
+    metrics: dict[str, Any],
+    sections_path: Path,
+    out_path: Path,
+    max_window_chars: int,
+) -> str:
+    return "\n".join(
+        [
+            "# Citation Contexts Sectioned Extraction Report",
+            "",
+            "## Inputs / Outputs",
+            _table(
+                [
+                    {"name": "sections", "path": sections_path},
+                    {"name": "citation_contexts_sectioned", "path": out_path},
+                ]
+            ),
+            "",
+            f"- Max context window chars: {max_window_chars}",
+            "- Extraction mode: pre-resolution / no bibliography",
+            "",
+            "## Core Metrics",
+            _table(
+                [
+                    {"metric": "context rows", "value": metrics["context_rows"]},
+                    {"metric": "unique context_id", "value": metrics["unique_context_id"]},
+                    {
+                        "metric": "duplicate context_id",
+                        "value": metrics["duplicate_context_id"],
+                    },
+                    {
+                        "metric": "sentence_text in context_window_s3 rate",
+                        "value": metrics["sentence_text_in_context_window_s3_rate"],
+                    },
+                    {
+                        "metric": "sentence_text in context_window_paragraph rate",
+                        "value": metrics[
+                            "sentence_text_in_context_window_paragraph_rate"
+                        ],
+                    },
+                    {
+                        "metric": "citation_marker in sentence_text rate",
+                        "value": metrics["citation_marker_in_sentence_text_rate"],
+                    },
+                ]
+            ),
+            "",
+            "## Marker Type Distribution",
+            _table(metrics["marker_type_distribution"]),
+            "",
+            "## Attribution Status Distribution",
+            _table(metrics["attribution_status_distribution"]),
+            "",
+            "## Normalized Section Distribution",
+            _table(metrics["normalized_section_distribution"]),
+            "",
+            "## Citation Group Size Distribution",
+            _table(metrics["citation_group_size_distribution"]),
+            "",
+            "## Sample Rows",
+            _table(metrics["samples"]),
+            "",
+        ]
+    )
+
+
+def _substring_rate(frame: pd.DataFrame, *, needle: str, haystack: str) -> str:
+    if frame.empty:
+        return "0.000"
+    contained = 0
+    for row in frame[[needle, haystack]].itertuples(index=False):
+        needle_text = _clean_text(getattr(row, needle))
+        haystack_text = _clean_text(getattr(row, haystack))
+        if needle_text and needle_text in haystack_text:
+            contained += 1
+    return _rate(contained, len(frame))
+
+
+def _value_distribution(frame: pd.DataFrame, column: str) -> list[dict[str, Any]]:
+    if frame.empty or column not in frame:
+        return []
+    counts = (
+        frame[column]
+        .fillna("unavailable")
+        .astype(str)
+        .value_counts(dropna=False)
+        .rename_axis(column)
+        .reset_index(name="rows")
+    )
+    return _records(counts)
+
+
+def _sample_context_rows(frame: pd.DataFrame, limit: int) -> list[dict[str, Any]]:
+    if frame.empty:
+        return []
+    columns = [
+        "context_id",
+        "citing_paper_id",
+        "section",
+        "paragraph_id",
+        "citation_marker",
+        "marker_type",
+        "attribution_status",
+        "citation_group_size",
+        "sentence_text",
+        "context_window_s3",
+    ]
+    sample = frame[columns].head(limit).copy()
+    for column in ("sentence_text", "context_window_s3"):
+        sample[column] = sample[column].map(lambda value: _truncate(value, 180))
+    return _records(sample)
+
+
+def _records(frame: pd.DataFrame) -> list[dict[str, Any]]:
+    if frame.empty:
+        return []
+    clean = frame.where(pd.notna(frame), None)
+    return clean.to_dict(orient="records")
+
+
+def _rate(numerator: int, denominator: int) -> str:
+    if denominator == 0:
+        return "0.000"
+    return f"{numerator / denominator:.3f}"
+
+
+def _truncate(value: Any, max_chars: int) -> str:
+    text = _clean_text(value)
+    if len(text) <= max_chars:
+        return text
+    return f"{text[: max_chars - 3]}..."
+
+
+def _table(rows: list[dict[str, Any]]) -> str:
+    if not rows:
+        return "No records available."
+    columns = list(dict.fromkeys(column for row in rows for column in row))
+    lines = [
+        "| " + " | ".join(columns) + " |",
+        "| " + " | ".join("---" for _ in columns) + " |",
+    ]
+    for row in rows:
+        lines.append(
+            "| "
+            + " | ".join(_markdown_cell(row.get(column)) for column in columns)
+            + " |"
+        )
+    return "\n".join(lines)
+
+
+def _markdown_cell(value: Any) -> str:
+    if value is None or pd.isna(value):
+        return "unavailable"
+    return _truncate(value, 160).replace("|", "\\|")
 
 
 def _overlaps(start: int, end: int, occupied: list[tuple[int, int]]) -> bool:
