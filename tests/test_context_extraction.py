@@ -209,8 +209,50 @@ def test_sectioned_extraction_uses_normalized_section_and_report(tmp_path: Path)
     )
 
     assert contexts.iloc[0]["section"] == "method"
+    assert contexts.iloc[0]["raw_section_name"] == "Methodology"
+    assert contexts.iloc[0]["normalized_section"] == "method"
+    assert not bool(contexts.iloc[0]["large_citation_group_flag"])
+    assert not bool(contexts.iloc[0]["very_large_citation_group_flag"])
+    assert not bool(contexts.iloc[0]["suspicious_citation_range_flag"])
     assert metrics["duplicate_context_id"] == 0
-    assert "Normalized Section Distribution" in report_path.read_text(encoding="utf-8")
+    assert metrics["raw_section_name_non_empty_rate"] == "1.000"
+    report = report_path.read_text(encoding="utf-8")
+    assert "raw_section_name non-empty rate" in report
+    assert "Normalized Section Distribution" in report
+
+
+def test_large_citation_group_flags(tmp_path: Path) -> None:
+    sections_path, _, out_path = _write_inputs(
+        tmp_path,
+        sections=[
+            {
+                "paper_id": "p1",
+                "section_name": "Experiments",
+                "paragraph_id": "p1-para-large",
+                "paragraph_text": (
+                    "Normal grouped citations are [1, 2]. "
+                    "A suspicious citation range is [1-21]."
+                ),
+            }
+        ],
+    )
+
+    contexts = extract_citation_contexts(
+        sections_path=sections_path,
+        out_path=out_path,
+        max_window_chars=300,
+    )
+
+    normal_group = contexts.loc[contexts["citation_marker"].eq("[1, 2]")]
+    large_range = contexts.loc[contexts["citation_marker"].eq("[1-21]")]
+    assert len(normal_group) == 2
+    assert len(large_range) == 21
+    assert normal_group["large_citation_group_flag"].eq(False).all()
+    assert normal_group["very_large_citation_group_flag"].eq(False).all()
+    assert normal_group["suspicious_citation_range_flag"].eq(False).all()
+    assert large_range["large_citation_group_flag"].eq(True).all()
+    assert large_range["very_large_citation_group_flag"].eq(False).all()
+    assert large_range["suspicious_citation_range_flag"].eq(True).all()
 
 
 def test_multiple_citations_in_one_paragraph(tmp_path: Path) -> None:

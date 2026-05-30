@@ -21,6 +21,8 @@ CONTEXT_COLUMNS = [
     "cited_title",
     "cited_year",
     "cited_doi",
+    "raw_section_name",
+    "normalized_section",
     "section",
     "paragraph_id",
     "citation_marker",
@@ -31,6 +33,9 @@ CONTEXT_COLUMNS = [
     "context_window_s3",
     "context_window_paragraph",
     "citation_group_size",
+    "large_citation_group_flag",
+    "very_large_citation_group_flag",
+    "suspicious_citation_range_flag",
     "attribution_status",
 ]
 
@@ -132,7 +137,8 @@ def extract_citation_contexts(
         rows.extend(
             _extract_from_section(
                 paper_id=str(section.paper_id),
-                section_name=_section_label(section),
+                raw_section_name=_none_if_missing(section.section_name),
+                normalized_section=_normalized_section_label(section),
                 paragraph_id=str(section.paragraph_id),
                 paragraph_text=_clean_text(section.paragraph_text),
                 references=reference_index.get(str(section.paper_id), {}),
@@ -178,16 +184,30 @@ def write_context_extraction_report(
             needle="citation_marker",
             haystack="sentence_text",
         ),
+        "raw_section_name_non_empty_rate": _non_empty_rate(contexts, "raw_section_name"),
         "marker_type_distribution": _value_distribution(contexts, "marker_type"),
         "attribution_status_distribution": _value_distribution(
             contexts,
             "attribution_status",
         ),
-        "normalized_section_distribution": _value_distribution(contexts, "section"),
+        "normalized_section_distribution": _value_distribution(
+            contexts,
+            "normalized_section",
+        ),
         "citation_group_size_distribution": _value_distribution(
             contexts,
             "citation_group_size",
         ),
+        "large_citation_group_count": _flag_count(contexts, "large_citation_group_flag"),
+        "very_large_citation_group_count": _flag_count(
+            contexts,
+            "very_large_citation_group_flag",
+        ),
+        "suspicious_citation_range_count": _flag_count(
+            contexts,
+            "suspicious_citation_range_flag",
+        ),
+        "large_citation_group_examples": _large_citation_group_examples(contexts, 20),
         "samples": _sample_context_rows(contexts, 20),
     }
     report = _build_extraction_report(
@@ -216,9 +236,8 @@ def _read_sections(sections_path: str | Path) -> pd.DataFrame:
     return pd.read_parquet(path, columns=columns)
 
 
-def _section_label(section: Any) -> str | None:
-    normalized = _none_if_missing(getattr(section, NORMALIZED_SECTION_COLUMN, None))
-    return normalized or _none_if_missing(section.section_name)
+def _normalized_section_label(section: Any) -> str | None:
+    return _none_if_missing(getattr(section, NORMALIZED_SECTION_COLUMN, None))
 
 
 def _load_references(references_path: str | Path, paper_ids: set[str]) -> pd.DataFrame:
@@ -242,7 +261,8 @@ def _build_reference_index(references: pd.DataFrame) -> dict[str, dict[str, dict
 def _extract_from_section(
     *,
     paper_id: str,
-    section_name: str | None,
+    raw_section_name: str | None,
+    normalized_section: str | None,
     paragraph_id: str,
     paragraph_text: str,
     references: dict[str, dict[str, Any]],
@@ -267,6 +287,10 @@ def _extract_from_section(
                 references,
                 use_bibliography=use_bibliography,
             )
+            citation_group_size = len(marker.reference_keys)
+            large_group_flag = citation_group_size > 20
+            very_large_group_flag = citation_group_size > 50
+            suspicious_range_flag = marker.is_range and citation_group_size > 20
             for component_index, reference_key in enumerate(marker.reference_keys):
                 reference = references.get(reference_key)
                 marker_start_in_sentence = marker.start - sentence.start
@@ -296,7 +320,9 @@ def _extract_from_section(
                     "cited_title": _reference_value(reference, "cited_title"),
                     "cited_year": _reference_year(reference),
                     "cited_doi": _reference_value(reference, "cited_doi"),
-                    "section": section_name,
+                    "raw_section_name": raw_section_name,
+                    "normalized_section": normalized_section,
+                    "section": normalized_section or raw_section_name,
                     "paragraph_id": paragraph_id,
                     "citation_marker": marker.marker,
                     "marker_start_offset": marker_start_in_sentence,
@@ -316,7 +342,10 @@ def _extract_from_section(
                         center_end=marker.end,
                         max_chars=max_window_chars,
                     ),
-                    "citation_group_size": len(marker.reference_keys),
+                    "citation_group_size": citation_group_size,
+                    "large_citation_group_flag": large_group_flag,
+                    "very_large_citation_group_flag": very_large_group_flag,
+                    "suspicious_citation_range_flag": suspicious_range_flag,
                     "attribution_status": status.value,
                 }
                 rows.append(row)
@@ -734,6 +763,22 @@ def _build_extraction_report(
                         "metric": "citation_marker in sentence_text rate",
                         "value": metrics["citation_marker_in_sentence_text_rate"],
                     },
+                    {
+                        "metric": "raw_section_name non-empty rate",
+                        "value": metrics["raw_section_name_non_empty_rate"],
+                    },
+                    {
+                        "metric": "large citation group count",
+                        "value": metrics["large_citation_group_count"],
+                    },
+                    {
+                        "metric": "very large citation group count",
+                        "value": metrics["very_large_citation_group_count"],
+                    },
+                    {
+                        "metric": "suspicious citation range count",
+                        "value": metrics["suspicious_citation_range_count"],
+                    },
                 ]
             ),
             "",
@@ -748,6 +793,9 @@ def _build_extraction_report(
             "",
             "## Citation Group Size Distribution",
             _table(metrics["citation_group_size_distribution"]),
+            "",
+            "## Large Citation Group Examples",
+            _table(metrics["large_citation_group_examples"]),
             "",
             "## Sample Rows",
             _table(metrics["samples"]),
@@ -768,6 +816,18 @@ def _substring_rate(frame: pd.DataFrame, *, needle: str, haystack: str) -> str:
     return _rate(contained, len(frame))
 
 
+def _non_empty_rate(frame: pd.DataFrame, column: str) -> str:
+    if frame.empty or column not in frame:
+        return "0.000"
+    return _rate(int(frame[column].map(_none_if_missing).notna().sum()), len(frame))
+
+
+def _flag_count(frame: pd.DataFrame, column: str) -> int:
+    if frame.empty or column not in frame:
+        return 0
+    return int(frame[column].fillna(False).astype(bool).sum())
+
+
 def _value_distribution(frame: pd.DataFrame, column: str) -> list[dict[str, Any]]:
     if frame.empty or column not in frame:
         return []
@@ -782,13 +842,45 @@ def _value_distribution(frame: pd.DataFrame, column: str) -> list[dict[str, Any]
     return _records(counts)
 
 
+def _large_citation_group_examples(frame: pd.DataFrame, limit: int) -> list[dict[str, Any]]:
+    if frame.empty or "large_citation_group_flag" not in frame:
+        return []
+    large = frame.loc[frame["large_citation_group_flag"].fillna(False).astype(bool)].copy()
+    if large.empty:
+        return []
+    columns = [
+        "context_id",
+        "citing_paper_id",
+        "raw_section_name",
+        "normalized_section",
+        "citation_marker",
+        "marker_type",
+        "attribution_status",
+        "citation_group_size",
+        "large_citation_group_flag",
+        "very_large_citation_group_flag",
+        "suspicious_citation_range_flag",
+        "sentence_text",
+    ]
+    sample = (
+        large.sort_values("citation_group_size", ascending=False)
+        .drop_duplicates(subset=["citing_paper_id", "paragraph_id", "citation_marker"])
+        .head(limit)[columns]
+        .copy()
+    )
+    for column in ("citation_marker", "sentence_text"):
+        sample[column] = sample[column].map(lambda value: _truncate(value, 180))
+    return _records(sample)
+
+
 def _sample_context_rows(frame: pd.DataFrame, limit: int) -> list[dict[str, Any]]:
     if frame.empty:
         return []
     columns = [
         "context_id",
         "citing_paper_id",
-        "section",
+        "raw_section_name",
+        "normalized_section",
         "paragraph_id",
         "citation_marker",
         "marker_type",

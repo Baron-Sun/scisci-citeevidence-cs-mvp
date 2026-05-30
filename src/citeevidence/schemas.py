@@ -116,6 +116,8 @@ class CitationContext(BaseRecord):
     cited_title: NonEmptyStr | None = None
     cited_year: int | None = Field(default=None, ge=0)
     cited_doi: NonEmptyStr | None = None
+    raw_section_name: NonEmptyStr | None = None
+    normalized_section: NonEmptyStr | None = None
     section: NonEmptyStr | None = None
     paragraph_id: NonEmptyStr
     citation_marker: NonEmptyStr
@@ -126,6 +128,9 @@ class CitationContext(BaseRecord):
     context_window_s3: NonEmptyStr
     context_window_paragraph: NonEmptyStr
     citation_group_size: int = Field(ge=1)
+    large_citation_group_flag: bool = False
+    very_large_citation_group_flag: bool = False
+    suspicious_citation_range_flag: bool = False
     attribution_status: AttributionStatus
 
     @model_validator(mode="after")
