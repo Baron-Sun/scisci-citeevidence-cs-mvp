@@ -70,6 +70,12 @@ from citeevidence.contexts.resolve import (
 from citeevidence.datasets.multicite import load_multicite
 from citeevidence.datasets.normalize import write_labeled_contexts
 from citeevidence.datasets.scicite import load_scicite
+from citeevidence.objects import (
+    DEFAULT_OBJECT_MATCHING_SAMPLE_REPORT,
+    DEFAULT_OBJECT_MENTIONS_SAMPLE_PATH,
+    DEFAULT_OBJECT_REGISTRY_PATH,
+    match_objects_in_contexts,
+)
 from citeevidence.review import (
     DEFAULT_MANUAL_REVIEW_CLEAN_PATH,
     DEFAULT_MANUAL_REVIEW_NEEDS_CHECK_PATH,
@@ -89,6 +95,7 @@ datasets_app = typer.Typer(
     help="Load and normalize citation-context datasets.",
     no_args_is_help=True,
 )
+objects_app = typer.Typer(help="Match registered NLP objects in contexts.", no_args_is_help=True)
 review_app = typer.Typer(help="Ingest human review files.", no_args_is_help=True)
 console = Console()
 error_console = Console(stderr=True)
@@ -100,6 +107,7 @@ app.add_typer(acl_app, name="acl")
 app.add_typer(config_app, name="config")
 app.add_typer(contexts_app, name="contexts")
 app.add_typer(datasets_app, name="datasets")
+app.add_typer(objects_app, name="objects")
 app.add_typer(review_app, name="review")
 
 
@@ -780,6 +788,50 @@ def ingest_resolution_review(
         f"reviewed={metrics['reviewed_rows']}, "
         f"unreviewed={metrics['unreviewed_rows']}. "
         f"Wrote {out}, {needs_check}, and {report}."
+    )
+
+
+@objects_app.command("match")
+def match_objects(
+    contexts: Annotated[
+        Path,
+        typer.Option("--contexts", help="Path to analysis_ready_strong_contexts.parquet."),
+    ],
+    registry: Annotated[
+        Path,
+        typer.Option("--registry", help="Path to object registry YAML."),
+    ] = DEFAULT_OBJECT_REGISTRY_PATH,
+    out: Annotated[
+        Path,
+        typer.Option("--out", help="Output object mentions sample parquet path."),
+    ] = DEFAULT_OBJECT_MENTIONS_SAMPLE_PATH,
+    report: Annotated[
+        Path,
+        typer.Option("--report", help="Output object matching sample report path."),
+    ] = DEFAULT_OBJECT_MATCHING_SAMPLE_REPORT,
+    limit: Annotated[
+        int,
+        typer.Option("--limit", min=1, help="Maximum context rows to process."),
+    ] = 50_000,
+) -> None:
+    """Match seed NLP object mentions in analysis-ready citation contexts."""
+    try:
+        metrics = match_objects_in_contexts(
+            contexts_path=contexts,
+            registry_path=registry,
+            out_path=out,
+            report_path=report,
+            limit=limit,
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        error_console.print(f"[red]Failed to match objects:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    console.print(
+        f"Processed {metrics['input_context_rows_processed']} contexts; "
+        f"matched {metrics['total_object_mentions']} object mentions in "
+        f"{metrics['contexts_with_at_least_one_object_mention']} contexts. "
+        f"Wrote {out} and {report}."
     )
 
 

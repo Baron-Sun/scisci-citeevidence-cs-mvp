@@ -16,8 +16,10 @@ Active course MVP pipeline. Implemented pieces include:
 - pre-resolution marker extraction that does not trust `acl_references.parquet`
 - author-year marker resolution pilot and full section-aware resolution against the aligned graph
 - context quality, ID mapping, full-citations coverage, and section-normalization audit reports
+- manual resolution review ingestion
+- seed NLP object registry and sample object mention matching
 
-Labeling, object registry construction, LLM labeling, and final aggregation are not implemented yet.
+Citation-function labeling, LLM evidence extraction, and final aggregation are not implemented yet.
 
 ## Requirements
 
@@ -96,6 +98,25 @@ citeevidence contexts resolve-markers \
   --out data/processed/citation_contexts_resolved.parquet \
   --failures data/processed/citation_marker_resolution_failures.parquet \
   --report reports/citation_marker_resolution_full_report.md
+```
+
+Audit the final resolved table and create the default strong-evidence input:
+
+```bash
+citeevidence contexts audit-final-resolved \
+  --resolved data/processed/citation_contexts_resolved.parquet \
+  --out reports/final_resolved_context_audit.md \
+  --flags data/processed/final_resolved_context_quality_flags.parquet \
+  --strong-sample data/processed/strong_resolved_contexts_sample.csv \
+  --manual-sample data/processed/manual_resolution_review_sample.csv \
+  --analysis-ready data/processed/analysis_ready_strong_contexts.parquet
+
+citeevidence objects match \
+  --contexts data/processed/analysis_ready_strong_contexts.parquet \
+  --registry configs/object_registry_seed.yaml \
+  --out data/processed/object_mentions_sample.parquet \
+  --report reports/object_matching_sample_report.md \
+  --limit 50000
 ```
 
 `citeevidence contexts extract` also defaults to no bibliography. Use `--use-bibliography --references PATH` only with a true local bibliography table. The current `data/interim/acl_references.parquet` is kept for backward compatibility, but it is not authoritative for ACL-OCL citation attribution.
