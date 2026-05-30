@@ -1,543 +1,700 @@
 objects:
-  - object_id: obj_bert
-    canonical_name: BERT
-    aliases:
-      - BERT
-      - Bidirectional Encoder Representations from Transformers
-    negative_aliases:
-      - RoBERTa
-      - BioBERT
-      - SciBERT
-      - ALBERT
-      - DistilBERT
-    object_type: model
-    linked_paper_title: "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding"
-    linked_acl_id: N19-1423
-    linked_doi:
-    source: seed
-    notes: Conservative model seed; descendants are negative aliases unless separately registered.
-    allow_short_alias: false
-
-  - object_id: obj_transformer
-    canonical_name: Transformer
-    aliases:
-      - Transformer
-      - Transformers
-      - Transformer model
-      - Transformer architecture
-    negative_aliases: []
-    object_type: model
-    linked_paper_title: "Attention Is All You Need"
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: Common model family; inspect lower-confidence matches before full analysis.
-    allow_short_alias: false
-
-  - object_id: obj_lstm
-    canonical_name: LSTM
-    aliases:
-      - LSTM
-      - LSTMs
-      - Long Short-Term Memory
-    negative_aliases: []
-    object_type: model
-    linked_paper_title:
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: Recurrent neural model family.
-    allow_short_alias: false
-
-  - object_id: obj_crf
-    canonical_name: CRF
-    aliases:
-      - CRF
-      - CRFs
-      - conditional random field
-      - conditional random fields
-    negative_aliases: []
-    object_type: method
-    linked_paper_title:
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: Boundary matching is required for the short acronym.
-    allow_short_alias: false
-
-  - object_id: obj_hmm
-    canonical_name: HMM
-    aliases:
-      - HMM
-      - HMMs
-      - hidden Markov model
-      - hidden Markov models
-    negative_aliases: []
-    object_type: method
-    linked_paper_title:
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: Boundary matching is required for the short acronym.
-    allow_short_alias: false
-
-  - object_id: obj_word2vec
-    canonical_name: word2vec
-    aliases:
-      - word2vec
-      - word 2 vec
-    negative_aliases: []
-    object_type: model
-    linked_paper_title:
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: Word embedding model family.
-    allow_short_alias: false
-
-  - object_id: obj_glove
-    canonical_name: GloVe
-    aliases:
-      - GloVe
-      - Global Vectors
-      - Global Vectors for Word Representation
-    negative_aliases:
-      - glove compartment
-    object_type: model
-    linked_paper_title: "GloVe: Global Vectors for Word Representation"
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: Case-insensitive matching may require later review for ordinary-word uses.
-    allow_short_alias: false
-
-  - object_id: obj_elmo
-    canonical_name: ELMo
-    aliases:
-      - ELMo
-      - Embeddings from Language Models
-    negative_aliases:
-      - Elmo's
-    object_type: model
-    linked_paper_title:
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: Boundary matching avoids matching inside longer words.
-    allow_short_alias: false
-
-  - object_id: obj_seq2seq
-    canonical_name: seq2seq
-    aliases:
-      - seq2seq
-      - sequence-to-sequence
-      - sequence to sequence
-      - encoder-decoder
-      - encoder decoder
-    negative_aliases: []
-    object_type: model
-    linked_paper_title:
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: Model family alias set.
-    allow_short_alias: false
-
-  - object_id: obj_attention_mechanism
-    canonical_name: attention mechanism
-    aliases:
-      - attention mechanism
-      - attention mechanisms
-    negative_aliases: []
-    object_type: method
-    linked_paper_title:
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: Avoid bare "attention" initially because it is too common.
-    allow_short_alias: false
-
-  - object_id: obj_glue
-    canonical_name: GLUE
-    aliases:
-      - GLUE
-      - General Language Understanding Evaluation
-      - GLUE benchmark
-    negative_aliases:
-      - glue code
-    object_type: benchmark_or_protocol
-    linked_paper_title: "GLUE: A Multi-Task Benchmark and Analysis Platform for Natural Language Understanding"
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: Benchmark seed.
-    allow_short_alias: false
-
-  - object_id: obj_superglue
-    canonical_name: SuperGLUE
-    aliases:
-      - SuperGLUE
-      - SuperGLUE benchmark
-    negative_aliases: []
-    object_type: benchmark_or_protocol
-    linked_paper_title: "SuperGLUE: A Stickier Benchmark for General-Purpose Language Understanding Systems"
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: Benchmark seed.
-    allow_short_alias: false
-
-  - object_id: obj_squad
-    canonical_name: SQuAD
-    aliases:
-      - SQuAD
-      - Stanford Question Answering Dataset
-      - SQuAD dataset
-    negative_aliases:
-      - squad car
-    object_type: dataset_or_database
-    linked_paper_title:
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: Dataset and QA benchmark.
-    allow_short_alias: false
-
-  - object_id: obj_conll_2003
-    canonical_name: CoNLL-2003
-    aliases:
-      - CoNLL-2003
-      - CoNLL 2003
-      - CoNLL03
-      - CoNLL-03
-    negative_aliases: []
-    object_type: benchmark_or_protocol
-    linked_paper_title:
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: Named entity recognition benchmark.
-    allow_short_alias: false
-
-  - object_id: obj_conll_2012
-    canonical_name: CoNLL-2012
-    aliases:
-      - CoNLL-2012
-      - CoNLL 2012
-      - CoNLL-2012 Shared Task
-      - CoNLL 2012 Shared Task
-    negative_aliases: []
-    object_type: benchmark_or_protocol
-    linked_paper_title:
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: Coreference and OntoNotes benchmark.
-    allow_short_alias: false
-
-  - object_id: obj_ontonotes
-    canonical_name: OntoNotes
-    aliases:
-      - OntoNotes
-      - OntoNotes corpus
-    negative_aliases: []
-    object_type: dataset_or_database
-    linked_paper_title:
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: Linguistic annotation corpus.
-    allow_short_alias: false
-
-  - object_id: obj_penn_treebank
-    canonical_name: Penn Treebank
-    aliases:
-      - Penn Treebank
-      - Penn Treebank corpus
-      - PTB
-    negative_aliases:
-      - PTB diagnostic
-    object_type: dataset_or_database
-    linked_paper_title:
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: PTB is kept with strict boundary matching.
-    allow_short_alias: false
-
-  - object_id: obj_wordnet
-    canonical_name: WordNet
-    aliases:
-      - WordNet
-      - WordNet database
-    negative_aliases: []
-    object_type: dataset_or_database
-    linked_paper_title:
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: Lexical database.
-    allow_short_alias: false
-
-  - object_id: obj_framenet
-    canonical_name: FrameNet
-    aliases:
-      - FrameNet
-    negative_aliases: []
-    object_type: dataset_or_database
-    linked_paper_title:
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: Frame-semantic lexical resource.
-    allow_short_alias: false
-
-  - object_id: obj_propbank
-    canonical_name: PropBank
-    aliases:
-      - PropBank
-    negative_aliases: []
-    object_type: dataset_or_database
-    linked_paper_title:
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: Predicate-argument annotation resource.
-    allow_short_alias: false
-
-  - object_id: obj_semeval
-    canonical_name: SemEval
-    aliases:
-      - SemEval
-      - Semantic Evaluation
-    negative_aliases: []
-    object_type: benchmark_or_protocol
-    linked_paper_title:
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: Evaluation campaign family.
-    allow_short_alias: false
-
-  - object_id: obj_wmt
-    canonical_name: WMT
-    aliases:
-      - WMT
-      - Workshop on Machine Translation
-      - Conference on Machine Translation
-    negative_aliases: []
-    object_type: benchmark_or_protocol
-    linked_paper_title:
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: Machine translation shared-task family.
-    allow_short_alias: false
-
-  - object_id: obj_multinli
-    canonical_name: MultiNLI
-    aliases:
-      - MultiNLI
-      - Multi-Genre Natural Language Inference
-      - Multi Genre Natural Language Inference
-    negative_aliases: []
-    object_type: dataset_or_database
-    linked_paper_title:
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: NLI dataset.
-    allow_short_alias: false
-
-  - object_id: obj_snli
-    canonical_name: SNLI
-    aliases:
-      - SNLI
-      - Stanford Natural Language Inference
-    negative_aliases: []
-    object_type: dataset_or_database
-    linked_paper_title:
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: NLI dataset.
-    allow_short_alias: false
-
-  - object_id: obj_bleu
-    canonical_name: BLEU
-    aliases:
-      - BLEU
-      - BLEU score
-      - Bilingual Evaluation Understudy
-    negative_aliases:
-      - blue
-    object_type: metric
-    linked_paper_title: "{B}leu: a Method for Automatic Evaluation of Machine Translation"
-    linked_acl_id: P02-1040
-    linked_doi:
-    source: seed
-    notes: MT evaluation metric.
-    allow_short_alias: false
-
-  - object_id: obj_rouge
-    canonical_name: ROUGE
-    aliases:
-      - ROUGE
-      - ROUGE score
-      - Recall-Oriented Understudy for Gisting Evaluation
-    negative_aliases:
-      - rouge et
-    object_type: metric
-    linked_paper_title:
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: Summarization evaluation metric.
-    allow_short_alias: false
-
-  - object_id: obj_meteor
-    canonical_name: METEOR
-    aliases:
-      - METEOR
-      - METEOR metric
-      - METEOR score
-    negative_aliases: []
-    object_type: metric
-    linked_paper_title:
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: MT evaluation metric.
-    allow_short_alias: false
-
-  - object_id: obj_f1
-    canonical_name: F1
-    aliases:
-      - F1
-      - F1 score
-      - F-score
-      - F measure
-      - F-measure
-    negative_aliases: []
-    object_type: metric
-    linked_paper_title:
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: Short and common metric alias; report as potential false-positive source.
-    allow_short_alias: true
-
-  - object_id: obj_accuracy
-    canonical_name: accuracy
-    aliases:
-      - accuracy
-      - classification accuracy
-    negative_aliases: []
-    object_type: metric
-    linked_paper_title:
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: Common metric term; matched with lower confidence.
-    allow_short_alias: false
-
-  - object_id: obj_perplexity
-    canonical_name: perplexity
-    aliases:
-      - perplexity
-      - PPL
-    negative_aliases: []
-    object_type: metric
-    linked_paper_title:
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: Common LM metric; PPL kept with boundary matching.
-    allow_short_alias: false
-
-  - object_id: obj_moses
-    canonical_name: Moses
-    aliases:
-      - Moses
-      - Moses toolkit
-      - Moses decoder
-      - Moses statistical machine translation system
-    negative_aliases: []
-    object_type: software_or_tool
-    linked_paper_title:
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: Statistical MT toolkit.
-    allow_short_alias: false
-
-  - object_id: obj_giza
-    canonical_name: GIZA++
-    aliases:
-      - GIZA++
-      - GIZA ++
-      - GIZA
-    negative_aliases: []
-    object_type: software_or_tool
-    linked_paper_title:
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: Word alignment toolkit.
-    allow_short_alias: false
-
-  - object_id: obj_stanford_corenlp
-    canonical_name: Stanford CoreNLP
-    aliases:
-      - Stanford CoreNLP
-      - CoreNLP
-    negative_aliases: []
-    object_type: software_or_tool
-    linked_paper_title:
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: NLP toolkit.
-    allow_short_alias: false
-
-  - object_id: obj_spacy
-    canonical_name: spaCy
-    aliases:
-      - spaCy
-    negative_aliases: []
-    object_type: software_or_tool
-    linked_paper_title:
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: NLP toolkit.
-    allow_short_alias: false
-
-  - object_id: obj_nltk
-    canonical_name: NLTK
-    aliases:
-      - NLTK
-      - Natural Language Toolkit
-    negative_aliases: []
-    object_type: software_or_tool
-    linked_paper_title:
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: NLP toolkit.
-    allow_short_alias: false
-
-  - object_id: obj_opus
-    canonical_name: OPUS
-    aliases:
-      - OPUS
-      - OPUS corpus
-      - OPUS collection
-    negative_aliases: []
-    object_type: software_or_tool
-    linked_paper_title:
-    linked_acl_id:
-    linked_doi:
-    source: seed
-    notes: Open parallel corpus collection and tooling ecosystem.
-    allow_short_alias: false
+- object_id: obj_bert
+  canonical_name: BERT
+  aliases:
+  - BERT
+  - Bidirectional Encoder Representations from Transformers
+  negative_aliases:
+  - RoBERTa
+  - BioBERT
+  - SciBERT
+  - ALBERT
+  - DistilBERT
+  object_type: model
+  linked_paper_title: 'BERT: Pre-training of Deep Bidirectional Transformers for Language
+    Understanding'
+  linked_acl_id: N19-1423
+  linked_doi: null
+  source: seed
+  notes: Conservative model seed; descendants are negative aliases unless separately
+    registered.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: null
+  require_case_sensitive: false
+  object_category: named_object
+  allow_in_object_graph: true
+- object_id: obj_transformer
+  canonical_name: Transformer
+  aliases:
+  - Transformer
+  - Transformers
+  - Transformer model
+  - Transformer architecture
+  negative_aliases: []
+  object_type: model
+  linked_paper_title: Attention Is All You Need
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: Uppercase Transformer is treated as a model; lowercase transformer is retained
+    with lower confidence as a generic architecture term.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: null
+  require_case_sensitive: false
+  object_category: named_object
+  allow_in_object_graph: true
+- object_id: obj_lstm
+  canonical_name: LSTM
+  aliases:
+  - LSTM
+  - LSTMs
+  - Long Short-Term Memory
+  negative_aliases: []
+  object_type: model
+  linked_paper_title: null
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: Recurrent neural model family.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: null
+  require_case_sensitive: false
+  object_category: named_object
+  allow_in_object_graph: true
+- object_id: obj_crf
+  canonical_name: CRF
+  aliases:
+  - CRF
+  - CRFs
+  - conditional random field
+  - conditional random fields
+  negative_aliases: []
+  object_type: method
+  linked_paper_title: null
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: Boundary matching is required for the short acronym.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: null
+  require_case_sensitive: false
+  object_category: named_object
+  allow_in_object_graph: true
+- object_id: obj_hmm
+  canonical_name: HMM
+  aliases:
+  - HMM
+  - HMMs
+  - hidden Markov model
+  - hidden Markov models
+  negative_aliases: []
+  object_type: method
+  linked_paper_title: null
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: Boundary matching is required for the short acronym.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: null
+  require_case_sensitive: false
+  object_category: named_object
+  allow_in_object_graph: true
+- object_id: obj_word2vec
+  canonical_name: word2vec
+  aliases:
+  - word2vec
+  - word 2 vec
+  negative_aliases: []
+  object_type: model
+  linked_paper_title: null
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: Word embedding model family.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: null
+  require_case_sensitive: false
+  object_category: named_object
+  allow_in_object_graph: true
+- object_id: obj_glove
+  canonical_name: GloVe
+  aliases:
+  - GloVe
+  - Global Vectors
+  - Global Vectors for Word Representation
+  negative_aliases:
+  - glove compartment
+  object_type: model
+  linked_paper_title: 'GloVe: Global Vectors for Word Representation'
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: Case-insensitive matching may require later review for ordinary-word uses.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: null
+  require_case_sensitive: false
+  object_category: named_object
+  allow_in_object_graph: true
+- object_id: obj_elmo
+  canonical_name: ELMo
+  aliases:
+  - ELMo
+  - Embeddings from Language Models
+  negative_aliases:
+  - Elmo's
+  object_type: model
+  linked_paper_title: null
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: Boundary matching avoids matching inside longer words.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: null
+  require_case_sensitive: false
+  object_category: named_object
+  allow_in_object_graph: true
+- object_id: obj_seq2seq
+  canonical_name: seq2seq
+  aliases:
+  - seq2seq
+  - sequence-to-sequence
+  - sequence to sequence
+  - encoder-decoder
+  - encoder decoder
+  negative_aliases: []
+  object_type: model
+  linked_paper_title: null
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: Model family alias set.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: null
+  require_case_sensitive: false
+  object_category: named_object
+  allow_in_object_graph: true
+- object_id: obj_attention_mechanism
+  canonical_name: attention mechanism
+  aliases:
+  - attention mechanism
+  - attention mechanisms
+  negative_aliases: []
+  object_type: method
+  linked_paper_title: null
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: Avoid bare "attention" initially because it is too common.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: null
+  require_case_sensitive: false
+  object_category: named_object
+  allow_in_object_graph: true
+- object_id: obj_glue
+  canonical_name: GLUE
+  aliases:
+  - GLUE
+  - General Language Understanding Evaluation
+  - GLUE benchmark
+  negative_aliases:
+  - glue code
+  object_type: benchmark_or_protocol
+  linked_paper_title: 'GLUE: A Multi-Task Benchmark and Analysis Platform for Natural
+    Language Understanding'
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: Benchmark seed.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: null
+  require_case_sensitive: false
+  object_category: named_object
+  allow_in_object_graph: true
+- object_id: obj_superglue
+  canonical_name: SuperGLUE
+  aliases:
+  - SuperGLUE
+  - SuperGLUE benchmark
+  negative_aliases: []
+  object_type: benchmark_or_protocol
+  linked_paper_title: 'SuperGLUE: A Stickier Benchmark for General-Purpose Language
+    Understanding Systems'
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: Benchmark seed.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: null
+  require_case_sensitive: false
+  object_category: named_object
+  allow_in_object_graph: true
+- object_id: obj_squad
+  canonical_name: SQuAD
+  aliases:
+  - SQuAD
+  - Stanford Question Answering Dataset
+  - SQuAD dataset
+  negative_aliases:
+  - squad car
+  object_type: dataset_or_database
+  linked_paper_title: null
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: Dataset and QA benchmark.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: null
+  require_case_sensitive: false
+  object_category: named_object
+  allow_in_object_graph: true
+- object_id: obj_conll_2003
+  canonical_name: CoNLL-2003
+  aliases:
+  - CoNLL-2003
+  - CoNLL 2003
+  - CoNLL03
+  - CoNLL-03
+  negative_aliases: []
+  object_type: benchmark_or_protocol
+  linked_paper_title: null
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: Named entity recognition benchmark.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: null
+  require_case_sensitive: false
+  object_category: named_object
+  allow_in_object_graph: true
+- object_id: obj_conll_2012
+  canonical_name: CoNLL-2012
+  aliases:
+  - CoNLL-2012
+  - CoNLL 2012
+  - CoNLL-2012 Shared Task
+  - CoNLL 2012 Shared Task
+  negative_aliases: []
+  object_type: benchmark_or_protocol
+  linked_paper_title: null
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: Coreference and OntoNotes benchmark.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: null
+  require_case_sensitive: false
+  object_category: named_object
+  allow_in_object_graph: true
+- object_id: obj_ontonotes
+  canonical_name: OntoNotes
+  aliases:
+  - OntoNotes
+  - OntoNotes corpus
+  negative_aliases: []
+  object_type: dataset_or_database
+  linked_paper_title: null
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: Linguistic annotation corpus.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: null
+  require_case_sensitive: false
+  object_category: named_object
+  allow_in_object_graph: true
+- object_id: obj_penn_treebank
+  canonical_name: Penn Treebank
+  aliases:
+  - Penn Treebank
+  - Penn Treebank corpus
+  - PTB
+  negative_aliases:
+  - PTB diagnostic
+  object_type: dataset_or_database
+  linked_paper_title: null
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: PTB is high confidence only near treebank/corpus/WSJ/dataset cues; otherwise
+    kept low-confidence as ambiguous_short_alias.
+  allow_short_alias: false
+  require_context_cue:
+  - treebank
+  - corpus
+  - Penn Treebank
+  - WSJ
+  - dataset
+  confidence_override: null
+  require_case_sensitive: false
+  object_category: named_object
+  allow_in_object_graph: true
+- object_id: obj_wordnet
+  canonical_name: WordNet
+  aliases:
+  - WordNet
+  - WordNet database
+  negative_aliases: []
+  object_type: dataset_or_database
+  linked_paper_title: null
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: Lexical database.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: null
+  require_case_sensitive: false
+  object_category: named_object
+  allow_in_object_graph: true
+- object_id: obj_framenet
+  canonical_name: FrameNet
+  aliases:
+  - FrameNet
+  negative_aliases: []
+  object_type: dataset_or_database
+  linked_paper_title: null
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: Frame-semantic lexical resource.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: null
+  require_case_sensitive: false
+  object_category: named_object
+  allow_in_object_graph: true
+- object_id: obj_propbank
+  canonical_name: PropBank
+  aliases:
+  - PropBank
+  negative_aliases: []
+  object_type: dataset_or_database
+  linked_paper_title: null
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: Predicate-argument annotation resource.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: null
+  require_case_sensitive: false
+  object_category: named_object
+  allow_in_object_graph: true
+- object_id: obj_semeval
+  canonical_name: SemEval
+  aliases:
+  - SemEval
+  - Semantic Evaluation
+  negative_aliases: []
+  object_type: benchmark_or_protocol
+  linked_paper_title: null
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: Evaluation campaign family.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: null
+  require_case_sensitive: false
+  object_category: named_object
+  allow_in_object_graph: true
+- object_id: obj_wmt
+  canonical_name: WMT
+  aliases:
+  - WMT
+  - Workshop on Machine Translation
+  - Conference on Machine Translation
+  negative_aliases: []
+  object_type: benchmark_or_protocol
+  linked_paper_title: null
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: Machine translation shared-task family.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: null
+  require_case_sensitive: false
+  object_category: named_object
+  allow_in_object_graph: true
+- object_id: obj_multinli
+  canonical_name: MultiNLI
+  aliases:
+  - MultiNLI
+  - Multi-Genre Natural Language Inference
+  - Multi Genre Natural Language Inference
+  negative_aliases: []
+  object_type: dataset_or_database
+  linked_paper_title: null
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: NLI dataset.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: null
+  require_case_sensitive: false
+  object_category: named_object
+  allow_in_object_graph: true
+- object_id: obj_snli
+  canonical_name: SNLI
+  aliases:
+  - SNLI
+  - Stanford Natural Language Inference
+  negative_aliases: []
+  object_type: dataset_or_database
+  linked_paper_title: null
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: NLI dataset.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: null
+  require_case_sensitive: false
+  object_category: named_object
+  allow_in_object_graph: true
+- object_id: obj_bleu
+  canonical_name: BLEU
+  aliases:
+  - BLEU
+  - BLEU score
+  - Bilingual Evaluation Understudy
+  negative_aliases:
+  - blue
+  object_type: metric
+  linked_paper_title: '{B}leu: a Method for Automatic Evaluation of Machine Translation'
+  linked_acl_id: P02-1040
+  linked_doi: null
+  source: seed
+  notes: MT evaluation metric.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: null
+  require_case_sensitive: false
+  object_category: named_object
+  allow_in_object_graph: true
+- object_id: obj_rouge
+  canonical_name: ROUGE
+  aliases:
+  - ROUGE
+  - ROUGE score
+  - Recall-Oriented Understudy for Gisting Evaluation
+  negative_aliases:
+  - rouge et
+  object_type: metric
+  linked_paper_title: null
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: Summarization evaluation metric.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: null
+  require_case_sensitive: false
+  object_category: named_object
+  allow_in_object_graph: true
+- object_id: obj_meteor
+  canonical_name: METEOR
+  aliases:
+  - METEOR
+  - METEOR metric
+  - METEOR score
+  negative_aliases: []
+  object_type: metric
+  linked_paper_title: null
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: MT evaluation metric.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: null
+  require_case_sensitive: false
+  object_category: named_object
+  allow_in_object_graph: true
+- object_id: obj_f1
+  canonical_name: F1
+  aliases:
+  - F1
+  - F1 score
+  - F-score
+  - F measure
+  - F-measure
+  - F1-score
+  negative_aliases: []
+  object_type: metric
+  linked_paper_title: null
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: Generic evaluation metric; keep as phase-1 cue, not object graph node.
+  allow_short_alias: true
+  require_context_cue: []
+  confidence_override: 0.7
+  require_case_sensitive: true
+  object_category: generic_metric
+  allow_in_object_graph: false
+- object_id: obj_accuracy
+  canonical_name: accuracy
+  aliases:
+  - accuracy
+  - classification accuracy
+  negative_aliases: []
+  object_type: metric
+  linked_paper_title: null
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: Generic evaluation metric; keep as phase-1 cue, not object graph node.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: 0.7
+  require_case_sensitive: false
+  object_category: generic_metric
+  allow_in_object_graph: false
+- object_id: obj_perplexity
+  canonical_name: perplexity
+  aliases:
+  - perplexity
+  - PPL
+  negative_aliases: []
+  object_type: metric
+  linked_paper_title: null
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: Generic language-model metric; keep as phase-1 cue, not object graph node.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: 0.7
+  require_case_sensitive: false
+  object_category: generic_metric
+  allow_in_object_graph: false
+- object_id: obj_moses
+  canonical_name: Moses
+  aliases:
+  - Moses
+  - Moses toolkit
+  - Moses decoder
+  - Moses statistical machine translation system
+  negative_aliases: []
+  object_type: software_or_tool
+  linked_paper_title: null
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: Statistical MT toolkit.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: null
+  require_case_sensitive: false
+  object_category: named_object
+  allow_in_object_graph: true
+- object_id: obj_giza
+  canonical_name: GIZA++
+  aliases:
+  - GIZA++
+  - GIZA ++
+  - GIZA
+  negative_aliases: []
+  object_type: software_or_tool
+  linked_paper_title: null
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: Word alignment toolkit.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: null
+  require_case_sensitive: false
+  object_category: named_object
+  allow_in_object_graph: true
+- object_id: obj_stanford_corenlp
+  canonical_name: Stanford CoreNLP
+  aliases:
+  - Stanford CoreNLP
+  - CoreNLP
+  negative_aliases: []
+  object_type: software_or_tool
+  linked_paper_title: null
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: NLP toolkit.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: null
+  require_case_sensitive: false
+  object_category: named_object
+  allow_in_object_graph: true
+- object_id: obj_spacy
+  canonical_name: spaCy
+  aliases:
+  - spaCy
+  negative_aliases: []
+  object_type: software_or_tool
+  linked_paper_title: null
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: NLP toolkit.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: null
+  require_case_sensitive: false
+  object_category: named_object
+  allow_in_object_graph: true
+- object_id: obj_nltk
+  canonical_name: NLTK
+  aliases:
+  - NLTK
+  - Natural Language Toolkit
+  negative_aliases: []
+  object_type: software_or_tool
+  linked_paper_title: null
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: NLP toolkit.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: null
+  require_case_sensitive: false
+  object_category: named_object
+  allow_in_object_graph: true
+- object_id: obj_opus
+  canonical_name: OPUS
+  aliases:
+  - OPUS
+  - OPUS corpus
+  - OPUS collection
+  negative_aliases: []
+  object_type: software_or_tool
+  linked_paper_title: null
+  linked_acl_id: null
+  linked_doi: null
+  source: seed
+  notes: Open parallel corpus collection and tooling ecosystem.
+  allow_short_alias: false
+  require_context_cue: []
+  confidence_override: null
+  require_case_sensitive: false
+  object_category: named_object
+  allow_in_object_graph: true

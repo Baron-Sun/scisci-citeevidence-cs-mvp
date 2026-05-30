@@ -114,8 +114,10 @@ citeevidence contexts audit-final-resolved \
 citeevidence objects match \
   --contexts data/processed/analysis_ready_strong_contexts.parquet \
   --registry configs/object_registry_seed.yaml \
-  --out data/processed/object_mentions_sample.parquet \
-  --report reports/object_matching_sample_report.md \
+  --out data/processed/object_mentions_sample_refined.parquet \
+  --cited-title-profiles data/processed/cited_title_object_profiles_sample.parquet \
+  --review-sample data/processed/object_mentions_review_sample.csv \
+  --report reports/object_matching_sample_refined_report.md \
   --limit 50000
 ```
 

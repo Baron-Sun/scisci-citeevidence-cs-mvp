@@ -71,7 +71,9 @@ from citeevidence.datasets.multicite import load_multicite
 from citeevidence.datasets.normalize import write_labeled_contexts
 from citeevidence.datasets.scicite import load_scicite
 from citeevidence.objects import (
+    DEFAULT_CITED_TITLE_OBJECT_PROFILES_SAMPLE_PATH,
     DEFAULT_OBJECT_MATCHING_SAMPLE_REPORT,
+    DEFAULT_OBJECT_MENTIONS_REVIEW_SAMPLE_PATH,
     DEFAULT_OBJECT_MENTIONS_SAMPLE_PATH,
     DEFAULT_OBJECT_REGISTRY_PATH,
     match_objects_in_contexts,
@@ -805,6 +807,17 @@ def match_objects(
         Path,
         typer.Option("--out", help="Output object mentions sample parquet path."),
     ] = DEFAULT_OBJECT_MENTIONS_SAMPLE_PATH,
+    cited_title_profiles: Annotated[
+        Path,
+        typer.Option(
+            "--cited-title-profiles",
+            help="Output cited-title object profile sample parquet path.",
+        ),
+    ] = DEFAULT_CITED_TITLE_OBJECT_PROFILES_SAMPLE_PATH,
+    review_sample: Annotated[
+        Path,
+        typer.Option("--review-sample", help="Output manual object mention review CSV path."),
+    ] = DEFAULT_OBJECT_MENTIONS_REVIEW_SAMPLE_PATH,
     report: Annotated[
         Path,
         typer.Option("--report", help="Output object matching sample report path."),
@@ -820,6 +833,8 @@ def match_objects(
             contexts_path=contexts,
             registry_path=registry,
             out_path=out,
+            cited_title_profiles_path=cited_title_profiles,
+            review_sample_path=review_sample,
             report_path=report,
             limit=limit,
         )
@@ -831,7 +846,7 @@ def match_objects(
         f"Processed {metrics['input_context_rows_processed']} contexts; "
         f"matched {metrics['total_object_mentions']} object mentions in "
         f"{metrics['contexts_with_at_least_one_object_mention']} contexts. "
-        f"Wrote {out} and {report}."
+        f"Wrote {out}, {cited_title_profiles}, {review_sample}, and {report}."
     )
 
 

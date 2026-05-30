@@ -10,8 +10,16 @@ import pyarrow.parquet as pq
 import yaml
 
 DEFAULT_OBJECT_REGISTRY_PATH = Path("configs/object_registry_seed.yaml")
-DEFAULT_OBJECT_MENTIONS_SAMPLE_PATH = Path("data/processed/object_mentions_sample.parquet")
-DEFAULT_OBJECT_MATCHING_SAMPLE_REPORT = Path("reports/object_matching_sample_report.md")
+DEFAULT_OBJECT_MENTIONS_SAMPLE_PATH = Path(
+    "data/processed/object_mentions_sample_refined.parquet"
+)
+DEFAULT_CITED_TITLE_OBJECT_PROFILES_SAMPLE_PATH = Path(
+    "data/processed/cited_title_object_profiles_sample.parquet"
+)
+DEFAULT_OBJECT_MENTIONS_REVIEW_SAMPLE_PATH = Path(
+    "data/processed/object_mentions_review_sample.csv"
+)
+DEFAULT_OBJECT_MATCHING_SAMPLE_REPORT = Path("reports/object_matching_sample_refined_report.md")
 
 OBJECT_TYPES = {
     "method",
@@ -24,7 +32,14 @@ OBJECT_TYPES = {
     "theory_or_concept",
     "claim_or_finding",
 }
+OBJECT_CATEGORIES = {
+    "named_object",
+    "generic_metric",
+    "generic_architecture",
+    "ambiguous_short_alias",
+}
 MATCHED_IN_COLUMNS = ["sentence_text", "context_window_s3", "resolved_cited_title"]
+CONTEXT_MATCHED_IN_COLUMNS = ["sentence_text", "context_window_s3"]
 CONTEXT_READ_COLUMNS = [
     "context_id",
     "source_context_id",
@@ -47,13 +62,40 @@ OBJECT_MENTION_COLUMNS = [
     "object_id",
     "canonical_name",
     "object_type",
+    "object_category",
     "surface_form",
+    "normalized_surface",
     "match_type",
     "char_start",
     "char_end",
     "confidence",
     "matched_in",
+    "match_policy",
+    "allow_in_object_graph",
     "provenance",
+]
+OBJECT_REVIEW_SAMPLE_COLUMNS = [
+    "review_bucket",
+    "context_id",
+    "source_context_id",
+    "citing_paper_id",
+    "resolved_cited_acl_id",
+    "resolved_cited_title",
+    "normalized_section",
+    "raw_section_name",
+    "sentence_text",
+    "context_window_s3",
+    "object_id",
+    "canonical_name",
+    "object_type",
+    "object_category",
+    "surface_form",
+    "matched_in",
+    "confidence",
+    "match_policy",
+    "allow_in_object_graph",
+    "reviewer_correct",
+    "reviewer_notes",
 ]
 COMMON_TERM_SURFACES = {
     "accuracy",
@@ -85,6 +127,11 @@ class ObjectRegistryEntry:
     source: str
     notes: str
     allow_short_alias: bool = False
+    object_category: str = "named_object"
+    allow_in_object_graph: bool = True
+    require_case_sensitive: bool = False
+    require_context_cue: tuple[str, ...] = ()
+    confidence_override: float | None = None
 
 
 @dataclass(frozen=True)
@@ -105,6 +152,8 @@ def match_objects_in_contexts(
     contexts_path: str | Path,
     registry_path: str | Path = DEFAULT_OBJECT_REGISTRY_PATH,
     out_path: str | Path = DEFAULT_OBJECT_MENTIONS_SAMPLE_PATH,
+    cited_title_profiles_path: str | Path = DEFAULT_CITED_TITLE_OBJECT_PROFILES_SAMPLE_PATH,
+    review_sample_path: str | Path = DEFAULT_OBJECT_MENTIONS_REVIEW_SAMPLE_PATH,
     report_path: str | Path = DEFAULT_OBJECT_MATCHING_SAMPLE_REPORT,
     limit: int = 50_000,
 ) -> dict[str, Any]:
@@ -120,15 +169,29 @@ def match_objects_in_contexts(
 
     registry = load_object_registry(registry_input)
     contexts = _read_contexts(contexts_input, limit=limit)
-    mentions, diagnostics = match_object_mentions(contexts, registry)
+    mentions, cited_title_profiles, diagnostics = match_object_mentions(contexts, registry)
 
     output = Path(out_path)
     output.parent.mkdir(parents=True, exist_ok=True)
     mentions.to_parquet(output, index=False)
 
+    cited_title_output = Path(cited_title_profiles_path)
+    cited_title_output.parent.mkdir(parents=True, exist_ok=True)
+    cited_title_profiles.to_parquet(cited_title_output, index=False)
+
+    review_sample = build_object_mentions_review_sample(
+        contexts=contexts,
+        mentions=mentions,
+        cited_title_profiles=cited_title_profiles,
+    )
+    review_sample_output = Path(review_sample_path)
+    review_sample_output.parent.mkdir(parents=True, exist_ok=True)
+    review_sample.to_csv(review_sample_output, index=False)
+
     metrics = build_object_matching_metrics(
         contexts=contexts,
         mentions=mentions,
+        cited_title_profiles=cited_title_profiles,
         diagnostics=diagnostics,
         registry=registry,
         limit=limit,
@@ -139,6 +202,8 @@ def match_objects_in_contexts(
         contexts_path=contexts_input,
         registry_path=registry_input,
         out_path=output,
+        cited_title_profiles_path=cited_title_output,
+        review_sample_path=review_sample_output,
     )
     report_output = Path(report_path)
     report_output.parent.mkdir(parents=True, exist_ok=True)
@@ -171,13 +236,15 @@ def load_object_registry(path: str | Path) -> list[ObjectRegistryEntry]:
 def match_object_mentions(
     contexts: pd.DataFrame,
     registry: list[ObjectRegistryEntry],
-) -> tuple[pd.DataFrame, dict[str, Any]]:
+) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
     """Return object mention rows and matcher diagnostics."""
     frame = _ensure_columns(contexts.copy(), CONTEXT_READ_COLUMNS)
     positive_specs, negative_specs = _build_alias_specs(registry)
-    mentions: list[dict[str, Any]] = []
+    raw_context_mentions: list[dict[str, Any]] = []
+    cited_title_profiles: list[dict[str, Any]] = []
     blocked_examples: list[dict[str, Any]] = []
     negative_blocked_count = 0
+    case_blocked_count = 0
 
     for row in frame.to_dict(orient="records"):
         for matched_in in MATCHED_IN_COLUMNS:
@@ -192,6 +259,10 @@ def match_object_mentions(
                     continue
                 for match in spec.pattern.finditer(normalized_text):
                     if not _span_has_word_boundary(normalized_text, match.start(), match.end()):
+                        continue
+                    surface = _surface_from_match(text, match, char_map)
+                    if not _case_policy_allows(surface, spec):
+                        case_blocked_count += 1
                         continue
                     blocked_by = _blocking_negative_alias(
                         spec,
@@ -217,22 +288,44 @@ def match_object_mentions(
                             )
                         continue
                     raw_matches.append(
-                        _candidate_match(row, spec, matched_in, text, match, char_map)
+                        _candidate_match(
+                            row,
+                            spec,
+                            matched_in,
+                            text,
+                            match,
+                            char_map,
+                            normalized_text=normalized_text,
+                        )
                     )
-            mentions.extend(_dedupe_overlapping_matches(raw_matches))
+            field_mentions = _dedupe_overlapping_matches(raw_matches)
+            if matched_in == "resolved_cited_title":
+                cited_title_profiles.extend(field_mentions)
+            else:
+                raw_context_mentions.extend(field_mentions)
 
-    mentions_df = pd.DataFrame(mentions, columns=OBJECT_MENTION_COLUMNS)
+    context_mentions, deduplicated_count = _dedupe_sentence_window_mentions(
+        raw_context_mentions
+    )
+    mentions_df = pd.DataFrame(context_mentions, columns=OBJECT_MENTION_COLUMNS)
+    cited_title_df = pd.DataFrame(cited_title_profiles, columns=OBJECT_MENTION_COLUMNS)
     diagnostics = {
+        "raw_context_mentions_before_deduplication": len(raw_context_mentions),
+        "deduplicated_count": deduplicated_count,
+        "cited_title_profile_count": len(cited_title_df),
         "negative_alias_blocked_count": negative_blocked_count,
+        "case_blocked_count": case_blocked_count,
         "negative_alias_blocked_examples": pd.DataFrame(blocked_examples),
+        "blocked_by_context_cue_count": 0,
     }
-    return mentions_df, diagnostics
+    return mentions_df, cited_title_df, diagnostics
 
 
 def build_object_matching_metrics(
     *,
     contexts: pd.DataFrame,
     mentions: pd.DataFrame,
+    cited_title_profiles: pd.DataFrame,
     diagnostics: dict[str, Any],
     registry: list[ObjectRegistryEntry],
     limit: int,
@@ -245,9 +338,26 @@ def build_object_matching_metrics(
         "input_context_rows_processed": int(len(contexts)),
         "limit": limit,
         "registry_objects": len(registry),
+        "raw_mentions_before_deduplication": int(
+            diagnostics["raw_context_mentions_before_deduplication"]
+        ),
+        "deduplicated_mentions_after_deduplication": int(len(mentions)),
+        "deduplicated_count": int(diagnostics["deduplicated_count"]),
+        "context_mentions_count": int(len(mentions)),
+        "cited_title_profile_count": int(len(cited_title_profiles)),
         "contexts_with_at_least_one_object_mention": contexts_with_mentions,
         "total_object_mentions": int(len(mentions)),
         "object_mentions_by_object_type": _value_counts(mentions, ["object_type"], "mentions"),
+        "object_mentions_by_object_category": _value_counts(
+            mentions,
+            ["object_category"],
+            "mentions",
+        ),
+        "object_mentions_by_allow_in_object_graph": _value_counts(
+            mentions,
+            ["allow_in_object_graph"],
+            "mentions",
+        ),
         "top_50_matched_objects": _value_counts(
             mentions,
             ["object_id", "canonical_name", "object_type"],
@@ -267,12 +377,33 @@ def build_object_matching_metrics(
         ),
         "matches_by_matched_in": _value_counts(mentions, ["matched_in"], "mentions"),
         "examples_per_object_type": _examples_per_group(mentions, "object_type", 5),
+        "top_generic_metrics": _value_counts(
+            mentions.loc[mentions["object_category"].eq("generic_metric")],
+            ["object_id", "canonical_name", "surface_form"],
+            "mentions",
+            limit=20,
+        ),
+        "top_ambiguous_short_alias_matches": _value_counts(
+            mentions.loc[mentions["object_category"].eq("ambiguous_short_alias")],
+            ["object_id", "canonical_name", "surface_form", "match_policy"],
+            "mentions",
+            limit=20,
+        ),
+        "ptb_examples": _surface_examples(mentions, "PTB", 20),
+        "generic_metric_examples": _generic_metric_examples(mentions, 20),
+        "transformer_case_examples": _transformer_case_examples(mentions, 20),
+        "cited_title_profile_examples": _sample_mentions(cited_title_profiles, 20),
         "potential_short_alias_false_positives": _short_alias_examples(mentions, 20),
         "potential_inside_longer_word_false_positives": pd.DataFrame(
             columns=OBJECT_MENTION_COLUMNS
         ),
         "potential_common_term_false_positives": _common_term_examples(mentions, 20),
         "negative_alias_blocked_count": int(diagnostics["negative_alias_blocked_count"]),
+        "blocked_by_context_cue_count": int(diagnostics["blocked_by_context_cue_count"]),
+        "case_blocked_count": int(diagnostics["case_blocked_count"]),
+        "low_confidence_match_count": int(
+            mentions["confidence"].fillna(0).astype(float).lt(0.75).sum()
+        ),
         "negative_alias_blocked_examples": diagnostics[
             "negative_alias_blocked_examples"
         ].head(20),
@@ -286,8 +417,10 @@ def build_object_matching_report(
     contexts_path: Path,
     registry_path: Path,
     out_path: Path,
+    cited_title_profiles_path: Path,
+    review_sample_path: Path,
 ) -> str:
-    """Build a markdown report for Task 8A object mention matching."""
+    """Build a markdown report for Task 8A.1 refined object mention matching."""
     core = pd.DataFrame(
         [
             {
@@ -297,6 +430,20 @@ def build_object_matching_report(
             {"metric": "configured limit", "value": metrics["limit"]},
             {"metric": "registry objects", "value": metrics["registry_objects"]},
             {
+                "metric": "raw mentions before deduplication",
+                "value": metrics["raw_mentions_before_deduplication"],
+            },
+            {
+                "metric": "deduplicated mentions after deduplication",
+                "value": metrics["deduplicated_mentions_after_deduplication"],
+            },
+            {"metric": "deduplicated_count", "value": metrics["deduplicated_count"]},
+            {"metric": "context mentions count", "value": metrics["context_mentions_count"]},
+            {
+                "metric": "cited title profile count",
+                "value": metrics["cited_title_profile_count"],
+            },
+            {
                 "metric": "contexts with at least one object mention",
                 "value": metrics["contexts_with_at_least_one_object_mention"],
             },
@@ -305,23 +452,40 @@ def build_object_matching_report(
                 "metric": "negative alias blocked count",
                 "value": metrics["negative_alias_blocked_count"],
             },
+            {
+                "metric": "blocked_by_context_cue count",
+                "value": metrics["blocked_by_context_cue_count"],
+            },
+            {"metric": "case blocked count", "value": metrics["case_blocked_count"]},
+            {
+                "metric": "low_confidence_match count",
+                "value": metrics["low_confidence_match_count"],
+            },
         ]
     )
     sections = [
-        "# Object Matching Sample Report",
+        "# Object Matching Sample Refined Report",
         "",
         "## Inputs",
         f"- Contexts: `{contexts_path}`",
         f"- Registry: `{registry_path}`",
         "",
         "## Outputs",
-        f"- Object mentions sample: `{out_path}`",
+        f"- Context object mentions sample: `{out_path}`",
+        f"- Cited-title object profiles sample: `{cited_title_profiles_path}`",
+        f"- Manual object mention review sample: `{review_sample_path}`",
         "",
         "## Core Metrics",
         _table(core),
         "",
         "## Object Mentions By Object Type",
         _table(metrics["object_mentions_by_object_type"]),
+        "",
+        "## Object Mentions By Object Category",
+        _table(metrics["object_mentions_by_object_category"]),
+        "",
+        "## Object Mentions By allow_in_object_graph",
+        _table(metrics["object_mentions_by_allow_in_object_graph"]),
         "",
         "## Top 50 Matched Objects",
         _table(metrics["top_50_matched_objects"]),
@@ -337,6 +501,24 @@ def build_object_matching_report(
         "",
         "## Examples Per Object Type",
         _table(metrics["examples_per_object_type"]),
+        "",
+        "## Top Generic Metrics",
+        _table(metrics["top_generic_metrics"]),
+        "",
+        "## Top Ambiguous Short Alias Matches",
+        _table(metrics["top_ambiguous_short_alias_matches"]),
+        "",
+        "## PTB Match Examples",
+        _table(metrics["ptb_examples"]),
+        "",
+        "## Accuracy / F1 / Perplexity Examples",
+        _table(metrics["generic_metric_examples"]),
+        "",
+        "## Transformer Uppercase / Lowercase Examples",
+        _table(metrics["transformer_case_examples"]),
+        "",
+        "## Cited Title Profile Examples",
+        _table(metrics["cited_title_profile_examples"]),
         "",
         "## Potential False Positives: Short Aliases",
         _table(metrics["potential_short_alias_false_positives"]),
@@ -357,6 +539,72 @@ def build_object_matching_report(
     return "\n".join(sections)
 
 
+def build_object_mentions_review_sample(
+    *,
+    contexts: pd.DataFrame,
+    mentions: pd.DataFrame,
+    cited_title_profiles: pd.DataFrame,
+    seed: int = 13,
+) -> pd.DataFrame:
+    """Build a deterministic 300-row object mention review sample."""
+    buckets = [
+        (
+            "named_object_high_confidence",
+            mentions.loc[
+                mentions["object_category"].eq("named_object")
+                & mentions["confidence"].fillna(0).astype(float).ge(0.85)
+            ],
+            75,
+        ),
+        (
+            "generic_metric",
+            mentions.loc[mentions["object_category"].eq("generic_metric")],
+            75,
+        ),
+        (
+            "ambiguous_short_alias",
+            mentions.loc[mentions["object_category"].eq("ambiguous_short_alias")],
+            50,
+        ),
+        ("resolved_title_profile", cited_title_profiles, 50),
+        (
+            "low_confidence_or_context_cue_missing",
+            mentions.loc[
+                mentions["confidence"].fillna(0).astype(float).lt(0.75)
+                | mentions["match_policy"].fillna("").astype(str).str.contains(
+                    "weak_context_cue_missing",
+                    regex=False,
+                )
+            ],
+            50,
+        ),
+    ]
+    samples = []
+    for index, (bucket, frame, requested) in enumerate(buckets):
+        sample = _sample_frame(frame, requested, seed + index).copy()
+        if sample.empty:
+            continue
+        sample["review_bucket"] = bucket
+        samples.append(sample)
+    if samples:
+        review = pd.concat(samples, ignore_index=True)
+    else:
+        review = pd.DataFrame(columns=OBJECT_MENTION_COLUMNS)
+    context_columns = contexts[
+        ["context_id", "source_context_id", "sentence_text", "context_window_s3"]
+    ].drop_duplicates(subset=["context_id", "source_context_id"])
+    review = review.merge(
+        context_columns,
+        on=["context_id", "source_context_id"],
+        how="left",
+        suffixes=("", "_context"),
+    )
+    review["reviewer_correct"] = ""
+    review["reviewer_notes"] = ""
+    review = _ensure_columns(review, OBJECT_REVIEW_SAMPLE_COLUMNS)
+    return review[OBJECT_REVIEW_SAMPLE_COLUMNS]
+
+
 def _registry_entry_from_mapping(raw: dict[str, Any], *, index: int) -> ObjectRegistryEntry:
     required = [
         "object_id",
@@ -373,9 +621,19 @@ def _registry_entry_from_mapping(raw: dict[str, Any], *, index: int) -> ObjectRe
     object_type = _clean_text(raw["object_type"])
     if object_type not in OBJECT_TYPES:
         raise ValueError(f"Registry entry {index} has unknown object_type: {object_type}")
+    object_category = _clean_text(raw.get("object_category") or "named_object")
+    if object_category not in OBJECT_CATEGORIES:
+        raise ValueError(
+            f"Registry entry {index} has unknown object_category: {object_category}"
+        )
     aliases = _as_text_tuple(raw.get("aliases"))
     if not aliases:
         raise ValueError(f"Registry entry {index} must have at least one alias")
+    confidence_override = raw.get("confidence_override")
+    if confidence_override in ("", None):
+        confidence_override = None
+    elif not isinstance(confidence_override, int | float):
+        raise ValueError(f"Registry entry {index} confidence_override must be numeric")
     return ObjectRegistryEntry(
         object_id=_clean_text(raw["object_id"]),
         canonical_name=_clean_text(raw["canonical_name"]),
@@ -388,6 +646,13 @@ def _registry_entry_from_mapping(raw: dict[str, Any], *, index: int) -> ObjectRe
         source=_clean_text(raw["source"]),
         notes=_clean_text(raw["notes"]),
         allow_short_alias=bool(raw.get("allow_short_alias", False)),
+        object_category=object_category,
+        allow_in_object_graph=bool(raw.get("allow_in_object_graph", True)),
+        require_case_sensitive=bool(raw.get("require_case_sensitive", False)),
+        require_context_cue=_as_text_tuple(raw.get("require_context_cue")),
+        confidence_override=float(confidence_override)
+        if confidence_override is not None
+        else None,
     )
 
 
@@ -471,12 +736,22 @@ def _candidate_match(
     text: str,
     match: re.Match[str],
     char_map: list[int],
+    *,
+    normalized_text: str,
 ) -> dict[str, Any]:
     char_start = char_map[match.start()]
     char_end = char_map[match.end() - 1] + 1
     surface = text[char_start:char_end]
     match_type = _match_type(surface, spec.alias)
-    confidence = _confidence(match_type, spec)
+    confidence, match_policy, object_category, allow_in_object_graph = _confidence_policy(
+        surface=surface,
+        match_type=match_type,
+        spec=spec,
+        matched_in=matched_in,
+        text=text,
+        char_start=char_start,
+        char_end=char_end,
+    )
     return {
         "context_id": row.get("context_id"),
         "source_context_id": row.get("source_context_id"),
@@ -488,15 +763,21 @@ def _candidate_match(
         "object_id": spec.entry.object_id,
         "canonical_name": spec.entry.canonical_name,
         "object_type": spec.entry.object_type,
+        "object_category": object_category,
         "surface_form": surface,
+        "normalized_surface": _normalized_surface(surface),
         "match_type": match_type,
         "char_start": char_start,
         "char_end": char_end,
         "confidence": confidence,
         "matched_in": matched_in,
+        "match_policy": match_policy,
+        "allow_in_object_graph": allow_in_object_graph,
         "provenance": f"registry_seed:{spec.entry.object_id};alias={spec.alias}",
         "_span": (char_start, char_end),
+        "_normalized_span": (match.start(), match.end()),
         "_alias_length": spec.alias_length,
+        "_normalized_text": normalized_text,
     }
 
 
@@ -574,6 +855,39 @@ def _dedupe_overlapping_matches(matches: list[dict[str, Any]]) -> list[dict[str,
     return output
 
 
+def _dedupe_sentence_window_mentions(
+    mentions: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], int]:
+    sentence_keys = {
+        _dedupe_key(mention)
+        for mention in mentions
+        if mention.get("matched_in") == "sentence_text"
+    }
+    output = []
+    dropped = 0
+    for mention in mentions:
+        if mention.get("matched_in") != "context_window_s3":
+            output.append(mention)
+            continue
+        if _dedupe_key(mention) in sentence_keys:
+            dropped += 1
+            continue
+        neighbor = mention.copy()
+        neighbor["matched_in"] = "context_window_neighbor"
+        neighbor["confidence"] = round(max(0.0, float(neighbor["confidence"]) - 0.10), 3)
+        neighbor["match_policy"] = f"{neighbor['match_policy']};neighbor_context_match"
+        output.append(neighbor)
+    return output, dropped
+
+
+def _dedupe_key(mention: dict[str, Any]) -> tuple[str, str, str]:
+    return (
+        _clean_text(mention.get("context_id")),
+        _clean_text(mention.get("object_id")),
+        _clean_text(mention.get("normalized_surface")),
+    )
+
+
 def _match_type(surface: str, alias: str) -> str:
     if surface == alias:
         return "exact_alias"
@@ -588,6 +902,92 @@ def _confidence(match_type: str, spec: AliasSpec) -> float:
     if match_type == "punctuation_normalized_alias":
         return 0.90
     return 0.95
+
+
+def _confidence_policy(
+    *,
+    surface: str,
+    match_type: str,
+    spec: AliasSpec,
+    matched_in: str,
+    text: str,
+    char_start: int,
+    char_end: int,
+) -> tuple[float, str, str, bool]:
+    confidence = (
+        spec.entry.confidence_override
+        if spec.entry.confidence_override is not None
+        else _confidence(match_type, spec)
+    )
+    match_policy = "standard"
+    object_category = spec.entry.object_category
+    allow_in_object_graph = spec.entry.allow_in_object_graph
+
+    if spec.entry.object_category == "generic_metric":
+        confidence = min(confidence, 0.70)
+        allow_in_object_graph = False
+        match_policy = "generic_metric"
+
+    if _is_lowercase_transformer(surface, spec):
+        confidence = min(confidence, 0.65)
+        object_category = "generic_architecture"
+        allow_in_object_graph = False
+        match_policy = "lowercase_generic_architecture"
+    elif spec.entry.object_id == "obj_transformer":
+        confidence = max(confidence, 0.95)
+
+    if spec.entry.require_context_cue:
+        if _has_context_cue(text, char_start, char_end, spec.entry.require_context_cue):
+            match_policy = "context_cue_present"
+        else:
+            confidence = min(confidence, 0.50)
+            object_category = "ambiguous_short_alias"
+            allow_in_object_graph = False
+            match_policy = "weak_context_cue_missing"
+
+    if matched_in == "context_window_neighbor":
+        confidence = max(0.0, confidence - 0.10)
+        match_policy = f"{match_policy};neighbor_context_match"
+
+    return round(confidence, 3), match_policy, object_category, allow_in_object_graph
+
+
+def _is_lowercase_transformer(surface: str, spec: AliasSpec) -> bool:
+    return (
+        spec.entry.object_id == "obj_transformer"
+        and _normalized_surface(surface) in {"transformer", "transformers"}
+        and surface[:1].islower()
+    )
+
+
+def _has_context_cue(
+    text: str,
+    char_start: int,
+    char_end: int,
+    cues: tuple[str, ...],
+    *,
+    window_chars: int = 80,
+) -> bool:
+    start = max(0, char_start - window_chars)
+    end = min(len(text), char_end + window_chars)
+    window = text[start:end].lower()
+    return any(cue.lower() in window for cue in cues if cue)
+
+
+def _case_policy_allows(surface: str, spec: AliasSpec) -> bool:
+    if not spec.entry.require_case_sensitive:
+        return True
+    return _alnum_case_key(surface) == _alnum_case_key(spec.alias)
+
+
+def _alnum_case_key(value: str) -> str:
+    return "".join(char for char in value if char.isalnum() or char in {"+", "#"})
+
+
+def _surface_from_match(text: str, match: re.Match[str], char_map: list[int]) -> str:
+    char_start = char_map[match.start()]
+    char_end = char_map[match.end() - 1] + 1
+    return text[char_start:char_end]
 
 
 def _span_has_word_boundary(normalized_text: str, start: int, end: int) -> bool:
@@ -630,6 +1030,31 @@ def _common_term_examples(mentions: pd.DataFrame, limit: int) -> pd.DataFrame:
     return _sample_mentions(common, limit)
 
 
+def _surface_examples(mentions: pd.DataFrame, surface: str, limit: int) -> pd.DataFrame:
+    if mentions.empty:
+        return pd.DataFrame(columns=OBJECT_MENTION_COLUMNS)
+    matches = mentions.loc[
+        mentions["surface_form"].fillna("").astype(str).str.lower().eq(surface.lower())
+    ]
+    return _sample_mentions(matches, limit)
+
+
+def _generic_metric_examples(mentions: pd.DataFrame, limit: int) -> pd.DataFrame:
+    if mentions.empty:
+        return pd.DataFrame(columns=OBJECT_MENTION_COLUMNS)
+    generic = mentions.loc[
+        mentions["canonical_name"].isin(["accuracy", "F1", "perplexity"])
+    ]
+    return _sample_mentions(generic, limit)
+
+
+def _transformer_case_examples(mentions: pd.DataFrame, limit: int) -> pd.DataFrame:
+    if mentions.empty:
+        return pd.DataFrame(columns=OBJECT_MENTION_COLUMNS)
+    transformer = mentions.loc[mentions["canonical_name"].eq("Transformer")]
+    return _sample_mentions(transformer, limit)
+
+
 def _examples_per_group(mentions: pd.DataFrame, column: str, per_group: int) -> pd.DataFrame:
     if mentions.empty or column not in mentions:
         return pd.DataFrame(columns=["example_group", *OBJECT_MENTION_COLUMNS])
@@ -650,6 +1075,14 @@ def _sample_mentions(mentions: pd.DataFrame, limit: int) -> pd.DataFrame:
     for column in ("resolved_cited_title", "surface_form"):
         sample[column] = sample[column].map(lambda value: _truncate(value, 140))
     return sample
+
+
+def _sample_frame(frame: pd.DataFrame, n: int, seed: int) -> pd.DataFrame:
+    if frame.empty or n <= 0:
+        return pd.DataFrame(columns=frame.columns)
+    if len(frame) <= n:
+        return frame.sample(frac=1, random_state=seed).reset_index(drop=True)
+    return frame.sample(n=n, random_state=seed).reset_index(drop=True)
 
 
 def _value_counts(
