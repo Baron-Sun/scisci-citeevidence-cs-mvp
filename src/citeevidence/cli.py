@@ -637,9 +637,13 @@ def resolve_markers(
         ),
     ] = DEFAULT_RESOLUTION_BASELINE_PATH,
     limit: Annotated[
-        int,
-        typer.Option("--limit", min=1, help="Maximum contexts to process for the pilot."),
-    ] = 100_000,
+        int | None,
+        typer.Option(
+            "--limit",
+            min=1,
+            help="Maximum contexts to process. Omit for full resolution.",
+        ),
+    ] = None,
     sample: Annotated[
         bool,
         typer.Option("--sample", help="Randomly sample contexts instead of taking the first rows."),

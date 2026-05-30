@@ -43,6 +43,8 @@ RESOLUTION_COLUMNS = [
     "resolution_status",
     "resolution_confidence",
     "resolution_method",
+    "resolution_level",
+    "is_strongly_resolved",
 ]
 OUTPUT_COLUMNS = [*CONTEXT_COLUMNS, *RESOLUTION_COLUMNS]
 GRAPH_READ_COLUMNS = [
@@ -123,13 +125,15 @@ def resolve_citation_markers_pilot(
     failures_path: str | Path = DEFAULT_RESOLUTION_FAILURES_PATH,
     report_path: str | Path = DEFAULT_RESOLUTION_REPORT_PATH,
     baseline_metrics_path: str | Path | None = DEFAULT_RESOLUTION_BASELINE_PATH,
-    limit: int = 100_000,
+    limit: int | None = 100_000,
     sample: bool = False,
     random_seed: int = 13,
 ) -> dict[str, Any]:
     """Resolve author-year citation markers against ACL-to-ACL graph candidates."""
-    if limit < 1:
+    if limit is not None and limit < 1:
         raise ValueError("limit must be positive")
+    if sample and limit is None:
+        raise ValueError("limit is required when sample=True")
     paths = [Path(contexts_path), Path(aligned_graph_path), Path(crosswalk_path)]
     for path in paths:
         if not path.exists():
@@ -153,7 +157,7 @@ def resolve_citation_markers_pilot(
     output.parent.mkdir(parents=True, exist_ok=True)
     resolved.to_parquet(output, index=False)
 
-    failures = resolved.loc[resolved["resolution_status"].ne("author_year_clear")].copy()
+    failures = resolved.loc[~resolved["is_strongly_resolved"].fillna(False)].copy()
     failures_output = Path(failures_path)
     failures_output.parent.mkdir(parents=True, exist_ok=True)
     failures.to_parquet(failures_output, index=False)
@@ -293,7 +297,7 @@ def build_resolution_report(
     crosswalk_path: Path,
     out_path: Path,
     failures_path: Path,
-    limit: int,
+    limit: int | None,
     sample: bool,
 ) -> str:
     """Build a markdown report for the citation marker resolution pilot."""
@@ -309,10 +313,25 @@ def build_resolution_report(
             "value": metrics["duplicate_context_id_after"],
         },
         {
+            "metric": "duplicate source_context_id count",
+            "value": metrics["duplicate_source_context_id_count"],
+        },
+        {
             "metric": "citing_paper_id coverage in aligned graph",
             "value": metrics["citing_paper_id_coverage_in_aligned_graph"],
         },
+        {"metric": "author_year_clear count", "value": metrics["author_year_clear_count"]},
         {"metric": "author_year_clear rate", "value": metrics["author_year_clear_rate"]},
+        {"metric": "weak_year_only count", "value": metrics["weak_year_only_count"]},
+        {"metric": "weak_year_only rate", "value": metrics["weak_year_only_rate"]},
+        {
+            "metric": "author_year_weak_nonfirst_author count",
+            "value": metrics["weak_nonfirst_author_count"],
+        },
+        {
+            "metric": "author_year_weak_nonfirst_author rate",
+            "value": metrics["weak_nonfirst_author_rate"],
+        },
         {
             "metric": "multi_candidate_ambiguous rate",
             "value": metrics["multi_candidate_ambiguous_rate"],
@@ -323,16 +342,36 @@ def build_resolution_report(
             "value": metrics["numeric_marker_unresolved_no_bibliography_rate"],
         },
         {
+            "metric": "numeric_marker_unresolved_no_bibliography count",
+            "value": metrics["numeric_marker_unresolved_no_bibliography_count"],
+        },
+        {
             "metric": "bibliography_unresolved rate",
             "value": metrics["bibliography_unresolved_rate"],
+        },
+        {
+            "metric": "bibliography_unresolved count",
+            "value": metrics["bibliography_unresolved_count"],
         },
         {
             "metric": "resolved_cited_title non-empty rate",
             "value": metrics["resolved_cited_title_non_empty_rate"],
         },
+        {
+            "metric": "resolved_cited_title non-empty rate for strong rows",
+            "value": metrics["strong_resolved_cited_title_non_empty_rate"],
+        },
+        {
+            "metric": "is_strongly_resolved count",
+            "value": metrics["is_strongly_resolved_count"],
+        },
+        {
+            "metric": "is_strongly_resolved rate",
+            "value": metrics["is_strongly_resolved_rate"],
+        },
     ]
     sections = [
-        "# Citation Marker Resolution Pilot Report",
+        "# Citation Marker Resolution Report",
         "",
         "## Inputs",
         _table(
@@ -346,19 +385,37 @@ def build_resolution_report(
         "## Outputs",
         _table(
             [
-                {"name": "citation_contexts_resolved_pilot", "path": out_path},
-                {"name": "citation_marker_resolution_pilot_failures", "path": failures_path},
+                {"name": "citation_contexts_resolved", "path": out_path},
+                {"name": "citation_marker_resolution_failures", "path": failures_path},
             ]
         ),
         "",
-        f"- Limit: {limit}",
+        f"- Limit: {limit if limit is not None else 'all'}",
         f"- Random sample: {sample}",
         "",
         "## Core Metrics",
         _table(core_rows),
         "",
+        "## Marker Type Distribution",
+        _table(metrics["marker_type_distribution"]),
+        "",
         "## Resolution Status Distribution",
         _table(metrics["resolution_status_distribution"]),
+        "",
+        "## Resolution Level Distribution",
+        _table(metrics["resolution_level_distribution"]),
+        "",
+        "## Resolution Status By Normalized Section",
+        _table(metrics["resolution_status_by_normalized_section"]),
+        "",
+        "## Strong Resolution Rate By Normalized Section",
+        _table(metrics["strong_resolution_by_normalized_section"]),
+        "",
+        "## Large Citation Group Flags By Resolution Status",
+        _table(metrics["large_citation_group_by_resolution_status"]),
+        "",
+        "## Suspicious Citation Range Flags By Resolution Status",
+        _table(metrics["suspicious_range_by_resolution_status"]),
         "",
         "## Before / After Comparison",
         _table(metrics["before_after_comparison"]),
@@ -366,8 +423,20 @@ def build_resolution_report(
         "## 20 Examples: author_year_clear",
         _table(metrics["samples"]["author_year_clear"]),
         "",
+        "## 20 Examples: weak_nonfirst_author",
+        _table(metrics["samples"]["weak_nonfirst_author"]),
+        "",
         "## 20 Examples: multi_candidate_ambiguous",
         _table(metrics["samples"]["multi_candidate_ambiguous"]),
+        "",
+        "## 20 Examples: ambiguous",
+        _table(metrics["samples"]["ambiguous"]),
+        "",
+        "## 20 Examples: numeric_unresolved",
+        _table(metrics["samples"]["numeric_unresolved"]),
+        "",
+        "## 20 Examples: bibliography_unresolved",
+        _table(metrics["samples"]["bibliography_unresolved"]),
         "",
         "## 20 Examples: unresolved markers",
         _table(metrics["samples"]["unresolved_markers"]),
@@ -379,12 +448,22 @@ def build_resolution_report(
     return "\n".join(sections)
 
 
-def _read_contexts(path: Path, *, limit: int, sample: bool, seed: int) -> pd.DataFrame:
+def _read_contexts(
+    path: Path,
+    *,
+    limit: int | None,
+    sample: bool,
+    seed: int,
+) -> pd.DataFrame:
     parquet_file = pq.ParquetFile(path)
     if not sample:
         batches = []
         remaining = limit
-        for batch in parquet_file.iter_batches(batch_size=min(50_000, limit)):
+        batch_size = min(50_000, limit) if limit is not None else 50_000
+        for batch in parquet_file.iter_batches(batch_size=batch_size):
+            if remaining is None:
+                batches.append(batch.to_pandas())
+                continue
             take = min(remaining, batch.num_rows)
             batches.append(batch.slice(0, take).to_pandas())
             remaining -= take
@@ -393,6 +472,8 @@ def _read_contexts(path: Path, *, limit: int, sample: bool, seed: int) -> pd.Dat
         return pd.concat(batches, ignore_index=True) if batches else pd.DataFrame()
 
     total = parquet_file.metadata.num_rows
+    if limit is None:
+        raise ValueError("limit is required when sample=True")
     sample_size = min(limit, total)
     rng = np.random.default_rng(seed)
     wanted = sorted(int(index) for index in rng.choice(total, size=sample_size, replace=False))
@@ -464,6 +545,10 @@ def _resolve_contexts(
             output_row["parsed_year"] = component.year
             output_row["parsed_year_suffix"] = component.year_suffix
             output_row["candidate_count_for_citing_paper"] = len(candidates)
+            output_row["resolution_level"] = _resolution_level(output_row)
+            output_row["is_strongly_resolved"] = output_row[
+                "resolution_level"
+            ] == "strong_author_year"
             output_row["context_id"] = _resolved_context_id(
                 source_context_id=source_context_id,
                 marker_component_index=component_index,
@@ -641,6 +726,29 @@ def _unresolved_fields(
     }
 
 
+def _resolution_level(row: dict[str, Any]) -> str:
+    status = _clean_text(row.get("resolution_status"))
+    marker_type = _clean_text(row.get("marker_type"))
+    suspicious_range = bool(row.get("suspicious_citation_range_flag"))
+    if (
+        status == "author_year_clear"
+        and marker_type not in {"numeric", "year_only"}
+        and not suspicious_range
+    ):
+        return "strong_author_year"
+    if status == "year_only_unique_candidate":
+        return "weak_year_only"
+    if status == "author_year_weak_nonfirst_author":
+        return "weak_nonfirst_author"
+    if status in {"multi_candidate_ambiguous", "ambiguous_year_only"}:
+        return "ambiguous"
+    if status == "numeric_marker_unresolved_no_bibliography":
+        return "numeric_unresolved"
+    if status == "citing_paper_not_in_aligned_graph":
+        return "out_of_graph"
+    return "unresolved"
+
+
 def _build_metrics(
     *,
     contexts: pd.DataFrame,
@@ -658,27 +766,63 @@ def _build_metrics(
     )
     status_counts = status_counts.rename(columns={"resolution_status": "status"})
     output_rows = len(resolved)
+    strong = resolved.loc[resolved["is_strongly_resolved"].fillna(False)].copy()
     metrics = {
         "total_input_contexts": int(len(contexts)),
         "output_rows": int(output_rows),
         "duplicate_context_id_before": duplicate_before,
         "duplicate_context_id_after": duplicate_after,
+        "duplicate_source_context_id_count": int(
+            len(resolved) - resolved["source_context_id"].nunique(dropna=True)
+        ),
         "citing_paper_id_coverage_in_aligned_graph": _rate(
             len(covered_context_ids),
             len(total_context_ids),
         ),
+        "marker_type_distribution": _distribution(resolved, "marker_type", "marker_type"),
         "resolution_status_distribution": _records(status_counts),
+        "resolution_level_distribution": _distribution(
+            resolved,
+            "resolution_level",
+            "resolution_level",
+        ),
         "author_year_clear_rate": _status_rate(resolved, "author_year_clear"),
+        "author_year_clear_count": _status_count(resolved, "author_year_clear"),
         "multi_candidate_ambiguous_rate": _status_rate(resolved, "multi_candidate_ambiguous"),
         "ambiguous_year_only_rate": _status_rate(resolved, "ambiguous_year_only"),
         "numeric_marker_unresolved_no_bibliography_rate": _status_rate(
             resolved,
             "numeric_marker_unresolved_no_bibliography",
         ),
+        "numeric_marker_unresolved_no_bibliography_count": _status_count(
+            resolved,
+            "numeric_marker_unresolved_no_bibliography",
+        ),
         "bibliography_unresolved_rate": _status_rate(resolved, "bibliography_unresolved"),
+        "bibliography_unresolved_count": _status_count(resolved, "bibliography_unresolved"),
+        "weak_year_only_count": _level_count(resolved, "weak_year_only"),
+        "weak_year_only_rate": _level_rate(resolved, "weak_year_only"),
+        "weak_nonfirst_author_count": _level_count(resolved, "weak_nonfirst_author"),
+        "weak_nonfirst_author_rate": _level_rate(resolved, "weak_nonfirst_author"),
+        "is_strongly_resolved_count": int(strong.shape[0]),
+        "is_strongly_resolved_rate": _rate(int(strong.shape[0]), output_rows),
         "resolved_cited_title_non_empty_rate": _rate(
             int(resolved["resolved_cited_title"].map(_clean_text_or_none).notna().sum()),
             output_rows,
+        ),
+        "strong_resolved_cited_title_non_empty_rate": _rate(
+            int(strong["resolved_cited_title"].map(_clean_text_or_none).notna().sum()),
+            len(strong),
+        ),
+        "resolution_status_by_normalized_section": _status_by_normalized_section(resolved),
+        "strong_resolution_by_normalized_section": _strong_by_normalized_section(resolved),
+        "large_citation_group_by_resolution_status": _flag_by_status(
+            resolved,
+            "large_citation_group_flag",
+        ),
+        "suspicious_range_by_resolution_status": _flag_by_status(
+            resolved,
+            "suspicious_citation_range_flag",
         ),
         "before_after_comparison": _before_after_comparison(
             baseline_resolution,
@@ -686,9 +830,17 @@ def _build_metrics(
         ),
         "samples": {
             "author_year_clear": _sample_status(resolved, "author_year_clear", 20),
+            "weak_nonfirst_author": _sample_level(resolved, "weak_nonfirst_author", 20),
             "multi_candidate_ambiguous": _sample_status(
                 resolved,
                 "multi_candidate_ambiguous",
+                20,
+            ),
+            "ambiguous": _sample_level(resolved, "ambiguous", 20),
+            "numeric_unresolved": _sample_level(resolved, "numeric_unresolved", 20),
+            "bibliography_unresolved": _sample_status(
+                resolved,
+                "bibliography_unresolved",
                 20,
             ),
             "unresolved_markers": _sample_unresolved(resolved, 20),
@@ -700,6 +852,10 @@ def _build_metrics(
 
 def _sample_status(frame: pd.DataFrame, status: str, limit: int) -> list[dict[str, Any]]:
     return _sample_rows(frame.loc[frame["resolution_status"].eq(status)], limit)
+
+
+def _sample_level(frame: pd.DataFrame, level: str, limit: int) -> list[dict[str, Any]]:
+    return _sample_rows(frame.loc[frame["resolution_level"].eq(level)], limit)
 
 
 def _existing_resolution_snapshot(path: Path) -> dict[str, Any] | None:
@@ -807,6 +963,8 @@ def _sample_rows(frame: pd.DataFrame, limit: int) -> list[dict[str, Any]]:
         "context_id",
         "source_context_id",
         "citing_paper_id",
+        "raw_section_name",
+        "normalized_section",
         "citation_marker",
         "marker_type",
         "marker_component_text",
@@ -817,9 +975,12 @@ def _sample_rows(frame: pd.DataFrame, limit: int) -> list[dict[str, Any]]:
         "resolved_cited_title",
         "matched_candidate_count",
         "resolution_status",
+        "resolution_level",
+        "is_strongly_resolved",
         "resolution_confidence",
         "sentence_text",
     ]
+    columns = [column for column in columns if column in frame]
     sample = frame[columns].head(limit).copy()
     for column in ("sentence_text", "resolved_cited_title"):
         sample[column] = sample[column].map(lambda value: _truncate(value, 180))
@@ -839,8 +1000,87 @@ def _failure_patterns(failures: pd.DataFrame) -> list[dict[str, Any]]:
     return _records(grouped)
 
 
+def _distribution(frame: pd.DataFrame, column: str, label: str) -> list[dict[str, Any]]:
+    if frame.empty or column not in frame:
+        return []
+    counts = (
+        frame[column]
+        .fillna("unavailable")
+        .astype(str)
+        .value_counts(dropna=False)
+        .rename_axis(label)
+        .reset_index(name="rows")
+    )
+    return _records(counts)
+
+
+def _status_count(frame: pd.DataFrame, status: str) -> int:
+    return int(frame["resolution_status"].eq(status).sum())
+
+
 def _status_rate(frame: pd.DataFrame, status: str) -> str:
-    return _rate(int(frame["resolution_status"].eq(status).sum()), len(frame))
+    return _rate(_status_count(frame, status), len(frame))
+
+
+def _level_count(frame: pd.DataFrame, level: str) -> int:
+    return int(frame["resolution_level"].eq(level).sum())
+
+
+def _level_rate(frame: pd.DataFrame, level: str) -> str:
+    return _rate(_level_count(frame, level), len(frame))
+
+
+def _status_by_normalized_section(frame: pd.DataFrame) -> list[dict[str, Any]]:
+    if frame.empty:
+        return []
+    section_column = "normalized_section" if "normalized_section" in frame else "section"
+    grouped = (
+        frame.assign(normalized_section_key=frame[section_column].fillna("unavailable"))
+        .groupby(["normalized_section_key", "resolution_status"], dropna=False)
+        .size()
+        .reset_index(name="rows")
+        .rename(columns={"normalized_section_key": "normalized_section"})
+        .sort_values(["normalized_section", "rows"], ascending=[True, False])
+    )
+    return _records(grouped)
+
+
+def _strong_by_normalized_section(frame: pd.DataFrame) -> list[dict[str, Any]]:
+    if frame.empty:
+        return []
+    section_column = "normalized_section" if "normalized_section" in frame else "section"
+    grouped = (
+        frame.assign(
+            normalized_section_key=frame[section_column].fillna("unavailable"),
+            strong=frame["is_strongly_resolved"].fillna(False).astype(bool),
+        )
+        .groupby("normalized_section_key", dropna=False)
+        .agg(rows=("context_id", "size"), strong_rows=("strong", "sum"))
+        .reset_index()
+        .rename(columns={"normalized_section_key": "normalized_section"})
+    )
+    grouped["strong_rate"] = grouped.apply(
+        lambda row: _rate(int(row["strong_rows"]), int(row["rows"])),
+        axis=1,
+    )
+    return _records(grouped.sort_values("rows", ascending=False))
+
+
+def _flag_by_status(frame: pd.DataFrame, flag_column: str) -> list[dict[str, Any]]:
+    if frame.empty or flag_column not in frame:
+        return []
+    grouped = (
+        frame.assign(flagged=frame[flag_column].fillna(False).astype(bool))
+        .groupby("resolution_status", dropna=False)
+        .agg(rows=("context_id", "size"), flagged_rows=("flagged", "sum"))
+        .reset_index()
+        .sort_values("flagged_rows", ascending=False)
+    )
+    grouped["flagged_rate"] = grouped.apply(
+        lambda row: _rate(int(row["flagged_rows"]), int(row["rows"])),
+        axis=1,
+    )
+    return _records(grouped)
 
 
 def _parsed_surnames(text: str) -> list[str]:

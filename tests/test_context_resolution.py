@@ -24,6 +24,8 @@ def _context_row(context_id: str, citing_paper_id: str, marker: str) -> dict[str
         "cited_title": None,
         "cited_year": None,
         "cited_doi": None,
+        "raw_section_name": "Related Work",
+        "normalized_section": "related_work",
         "section": "Related Work",
         "paragraph_id": f"{citing_paper_id}_p0",
         "citation_marker": marker,
@@ -31,6 +33,9 @@ def _context_row(context_id: str, citing_paper_id: str, marker: str) -> dict[str
         "context_window_s3": sentence,
         "context_window_paragraph": sentence,
         "citation_group_size": 1,
+        "large_citation_group_flag": False,
+        "very_large_citation_group_flag": False,
+        "suspicious_citation_range_flag": False,
         "attribution_status": "bibliography_unresolved",
     }
 
@@ -163,20 +168,36 @@ def test_resolve_citation_markers_pilot_rules(tmp_path: Path) -> None:
     assert metrics["duplicate_context_id_before"] == 1
     assert metrics["duplicate_context_id_after"] == 0
     assert _status_for(resolved, "ctx_vinyals") == "author_year_clear"
+    assert _level_for(resolved, "ctx_vinyals") == "strong_author_year"
+    assert bool(_row_for(resolved, "ctx_vinyals")["is_strongly_resolved"])
     assert _status_for(resolved, "ctx_elsner") == "author_year_clear"
     assert _row_for(resolved, "ctx_elsner")["parsed_surnames"] == "elsner;charniak"
     assert _status_for(resolved, "ctx_year_unique") == "year_only_unique_candidate"
+    assert _level_for(resolved, "ctx_year_unique") == "weak_year_only"
+    assert not bool(_row_for(resolved, "ctx_year_unique")["is_strongly_resolved"])
     assert _row_for(resolved, "ctx_year_unique")["resolution_confidence"] <= 0.60
     assert _status_for(resolved, "ctx_year_amb") == "ambiguous_year_only"
+    assert _level_for(resolved, "ctx_year_amb") == "ambiguous"
     assert _status_for(resolved, "ctx_numeric") == "numeric_marker_unresolved_no_bibliography"
+    assert _level_for(resolved, "ctx_numeric") == "numeric_unresolved"
+    assert not bool(_row_for(resolved, "ctx_numeric")["is_strongly_resolved"])
     assert _status_for(resolved, "ctx_no_graph") == "citing_paper_not_in_aligned_graph"
+    assert _level_for(resolved, "ctx_no_graph") == "out_of_graph"
     assert _status_for(resolved, "ctx_ambiguous") == "multi_candidate_ambiguous"
+    assert _level_for(resolved, "ctx_ambiguous") == "ambiguous"
     assert _status_for(resolved, "ctx_first_single") == "author_year_clear"
     assert _status_for(resolved, "ctx_nonfirst_single") == "author_year_weak_nonfirst_author"
+    assert _level_for(resolved, "ctx_nonfirst_single") == "weak_nonfirst_author"
+    assert not bool(_row_for(resolved, "ctx_nonfirst_single")["is_strongly_resolved"])
     assert _status_for(resolved, "ctx_et_al_nonfirst") == "bibliography_unresolved"
+    assert _level_for(resolved, "ctx_et_al_nonfirst") == "unresolved"
     assert _status_for(resolved, "ctx_two_explicit") == "author_year_clear"
     assert _row_for(resolved, "ctx_nonfirst_single")["resolution_confidence"] == 0.55
     assert _status_for(resolved, "ctx_malformed") == "bibliography_unresolved"
+    assert _row_for(resolved, "ctx_vinyals")["raw_section_name"] == "Related Work"
+    assert _row_for(resolved, "ctx_vinyals")["normalized_section"] == "related_work"
+    assert not bool(_row_for(resolved, "ctx_vinyals")["large_citation_group_flag"])
+    assert not bool(_row_for(resolved, "ctx_numeric")["suspicious_citation_range_flag"])
     assert resolved.loc[resolved["source_context_id"].eq("ctx_group")].shape[0] == 2
     group_statuses = set(
         resolved.loc[resolved["source_context_id"].eq("ctx_group"), "resolution_status"]
@@ -186,6 +207,8 @@ def test_resolve_citation_markers_pilot_rules(tmp_path: Path) -> None:
     }
     assert pd.read_parquet(failures_path)["resolution_status"].ne("author_year_clear").all()
     assert "resolved_cited_title non-empty rate" in report
+    assert "## Resolution Level Distribution" in report
+    assert "## Strong Resolution Rate By Normalized Section" in report
     assert "## Before / After Comparison" in report
 
 
@@ -334,6 +357,10 @@ def _row_for(frame: pd.DataFrame, source_context_id: str) -> pd.Series:
 
 def _status_for(frame: pd.DataFrame, source_context_id: str) -> str:
     return str(_row_for(frame, source_context_id)["resolution_status"])
+
+
+def _level_for(frame: pd.DataFrame, source_context_id: str) -> str:
+    return str(_row_for(frame, source_context_id)["resolution_level"])
 
 
 def _stable_context_id_map(frame: pd.DataFrame) -> dict[tuple[object, ...], str]:

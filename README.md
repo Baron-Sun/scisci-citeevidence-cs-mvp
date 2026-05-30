@@ -14,7 +14,7 @@ Active course MVP pipeline. Implemented pieces include:
 - aligned ACL-to-ACL citation graph construction from `acl_onlygraph`
 - bounded citation-context extraction from parsed ACL paragraphs
 - pre-resolution marker extraction that does not trust `acl_references.parquet`
-- author-year marker resolution pilot against the aligned graph
+- author-year marker resolution pilot and full section-aware resolution against the aligned graph
 - context quality, ID mapping, full-citations coverage, and section-normalization audit reports
 
 Labeling, object registry construction, LLM labeling, and final aggregation are not implemented yet.
@@ -84,6 +84,18 @@ citeevidence contexts resolve-markers \
   --failures data/processed/citation_marker_resolution_sectioned_pilot_failures.parquet \
   --report reports/citation_marker_resolution_sectioned_pilot_report.md \
   --limit 100000
+```
+
+For full section-aware resolution, omit `--limit`:
+
+```bash
+citeevidence contexts resolve-markers \
+  --contexts data/processed/citation_contexts_sectioned.parquet \
+  --aligned-graph data/interim/acl_citation_graph_aligned.parquet \
+  --crosswalk data/interim/acl_id_crosswalk.parquet \
+  --out data/processed/citation_contexts_resolved.parquet \
+  --failures data/processed/citation_marker_resolution_failures.parquet \
+  --report reports/citation_marker_resolution_full_report.md
 ```
 
 `citeevidence contexts extract` also defaults to no bibliography. Use `--use-bibliography --references PATH` only with a true local bibliography table. The current `data/interim/acl_references.parquet` is kept for backward compatibility, but it is not authoritative for ACL-OCL citation attribution.
