@@ -10,16 +10,16 @@ This is a model-based audit / LLM-assisted validation pass.
 ## Core Metrics
 | metric | value |
 | --- | --- |
-| dry run | True |
+| dry run | False |
 | sample rows | 200 |
-| reviewed rows | 0 |
-| dry-run prompt records | 200 |
-| fallback unclear rows | 0 |
-| from cache rows | 0 |
-| precision over true/false reviews | unavailable |
-| input tokens | 0 |
-| output tokens | 0 |
-| total tokens | 0 |
+| reviewed rows | 200 |
+| dry-run prompt records | 0 |
+| fallback unclear rows | 2 |
+| from cache rows | 2 |
+| precision over true/false reviews | 0.768 |
+| input tokens | 232844 |
+| output tokens | 28839 |
+| total tokens | 261683 |
 
 ## Sample Bucket Distribution
 | review_bucket | rows |
@@ -32,34 +32,140 @@ This is a model-based audit / LLM-assisted validation pass.
 | context_window_neighbor | 20 |
 
 ## Reviewer Correct Distribution
-No records available.
+| reviewer_correct | rows |
+| --- | --- |
+| true | 152 |
+| false | 46 |
+| unclear | 2 |
 
 ## Error Type Distribution
-No records available.
+| error_type | rows |
+| --- | --- |
+| none | 145 |
+| ambiguous_short_alias | 18 |
+| insufficient_context | 10 |
+| case_sensitive_issue | 7 |
+| alias_too_generic | 6 |
+| matched_unrelated_word | 6 |
+| other | 3 |
+| context_neighbor_not_relevant | 2 |
+| correct_but_not_graph_object | 2 |
+| wrong_object_type | 1 |
 
 ## Recommended Action Distribution
-No records available.
+| recommended_action | rows |
+| --- | --- |
+| keep | 143 |
+| require_context_cue | 28 |
+| block_alias | 14 |
+| keep_as_feature_only | 10 |
+| lower_confidence | 2 |
+| other | 2 |
+| change_object_type | 1 |
 
 ## Graph Allow Distribution
-No records available.
+| should_allow_in_object_graph | rows |
+| --- | --- |
+| False | 133 |
+| True | 67 |
 
 ## Phase-1 Feature Distribution
-No records available.
+| should_use_as_phase1_feature | rows |
+| --- | --- |
+| True | 142 |
+| False | 58 |
 
 ## Precision By Object Category
-No records available.
+| object_category | reviewed_true_false | correct | incorrect | precision |
+| --- | --- | --- | --- | --- |
+| named_object | 94 | 85 | 9 | 0.904 |
+| generic_metric | 44 | 44 | 0 | 1.000 |
+| ambiguous_short_alias | 30 | 0 | 30 | 0.000 |
+| generic_architecture | 30 | 23 | 7 | 0.767 |
 
 ## Precision By Matched In
-No records available.
+| matched_in | reviewed_true_false | correct | incorrect | precision |
+| --- | --- | --- | --- | --- |
+| sentence_text | 93 | 75 | 18 | 0.806 |
+| context_window_neighbor | 86 | 63 | 23 | 0.733 |
+| resolved_cited_title | 19 | 14 | 5 | 0.737 |
 
 ## Precision By Canonical Name
-No records available.
+| canonical_name | reviewed_true_false | correct | incorrect | precision |
+| --- | --- | --- | --- | --- |
+| Transformer | 38 | 31 | 7 | 0.816 |
+| Penn Treebank | 34 | 4 | 30 | 0.118 |
+| accuracy | 26 | 26 | 0 | 1.000 |
+| F1 | 14 | 14 | 0 | 1.000 |
+| BERT | 10 | 9 | 1 | 0.900 |
+| CRF | 9 | 9 | 0 | 1.000 |
+| BLEU | 8 | 7 | 1 | 0.875 |
+| WordNet | 7 | 5 | 2 | 0.714 |
+| HMM | 7 | 7 | 0 | 1.000 |
+| LSTM | 6 | 6 | 0 | 1.000 |
+| seq2seq | 6 | 3 | 3 | 0.500 |
+| WMT | 6 | 6 | 0 | 1.000 |
+| FrameNet | 5 | 5 | 0 | 1.000 |
+| perplexity | 4 | 4 | 0 | 1.000 |
+| Moses | 3 | 3 | 0 | 1.000 |
+| ROUGE | 3 | 3 | 0 | 1.000 |
+| METEOR | 2 | 1 | 1 | 0.500 |
+| GIZA++ | 2 | 2 | 0 | 1.000 |
+| attention mechanism | 2 | 2 | 0 | 1.000 |
+| NLTK | 1 | 1 | 0 | 1.000 |
+| SemEval | 1 | 1 | 0 | 1.000 |
+| SQuAD | 1 | 0 | 1 | 0.000 |
+| GloVe | 1 | 1 | 0 | 1.000 |
+| ELMo | 1 | 1 | 0 | 1.000 |
+| word2vec | 1 | 1 | 0 | 1.000 |
 
 ## False Or Unclear Examples
-No records available.
+| review_bucket | context_id | canonical_name | object_category | surface_form | matched_in | reviewer_correct | error_type | recommended_action | evidence_quote | rationale_short |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| named_object_high_confidence | ctxr_b877c7732d26928338d5 | CRF | named_object | CRFs | sentence_text | unclear | other | other |  | Could not validate model output. evidence_quote is not an exact substring of local evidence fields. Raw: {"reviewer_correct":"true","object_type_correct":"tr... |
+| named_object_high_confidence | ctxr_34723d66261374f9e339 | BLEU | named_object | BLEU | context_window_neighbor | false | matched_unrelated_word | block_alias | higher BLEU scores than an equivalent system forcing the output of WSD for isolated words into the translation model | While 'BLEU' is correctly identified as a metric, the context suggests it is used as a generic reference rather than specifically as a graph object. |
+| named_object_high_confidence | ctxr_7e69cf3813454546b4a4 | WordNet | named_object | WordNet | sentence_text | false | matched_unrelated_word | block_alias | We thus applied three generalization techniques to the head nouns: 1. GermaNet (GN) is the German version of WordNet (Hamp and Feldweg, 1997) . | While 'WordNet' refers correctly to the object, it does not meet the criterial context for entering the graph since the mention does not promote a specific u... |
+| ambiguous_short_alias | ctxr_4fa2cff178a6aaaea7a4 | Penn Treebank | ambiguous_short_alias | PTB | sentence_text | false | insufficient_context | require_context_cue | The parser was optimised on sections 02-21 of the Wall Street Journal of the Penn Tree Bank (PTB) | While PTB is mentioned, there is insufficient context to confidently establish it as referring to the Penn Treebank dataset without additional contextual cues. |
+| ambiguous_short_alias | ctxr_6afbbcf00698a5f24d61 | Penn Treebank | ambiguous_short_alias | PTB | sentence_text | false | ambiguous_short_alias | require_context_cue | PTB Wall Street Journal section | The evidence contains 'PTB' near the context of 'Wall Street Journal', but lacks strong disambiguation cues for it to enter the object graph. |
+| ambiguous_short_alias | ctxr_d2f7e10dccf772790070 | Penn Treebank | ambiguous_short_alias | PTB | sentence_text | false | ambiguous_short_alias | require_context_cue | The two corpora were converted from PTB constituency trees into dependency trees using the Stanford dependency converter (de Marneffe and Manning, 2008). | PTB lacks sufficient context cues indicating it refers to the Penn Treebank dataset. |
+| ambiguous_short_alias | ctxr_7b934ef7e74a56789682 | Penn Treebank | ambiguous_short_alias | PTB | sentence_text | false | ambiguous_short_alias | block_alias | a version of the PTB with function labels intact | The mention 'PTB' is too ambiguous without further context to specify 'Penn Treebank', given its other potential meanings. |
+| ambiguous_short_alias | ctxr_cd65f52db26c481dcc6b | Penn Treebank | ambiguous_short_alias | PTB | context_window_neighbor | false | ambiguous_short_alias | block_alias | We made use of LIBSVM Matlab source (Chang and Lin, 2001) for SVM classification, the MateParser (Bohnet, 2010) for dependency parsing, and JAWS (Spell, 2008... | The surface form 'PTB' does not refer directly to the object 'Penn Treebank' given the lack of strong context cues. |
+| ambiguous_short_alias | ctxr_ade313a487a2e6dd4583 | Penn Treebank | ambiguous_short_alias | PTB | context_window_neighbor | false | insufficient_context | require_context_cue | Based on them, many state-of-art English parser were built, including the well-known Collins parser (Collins, 2003) , Charniak parser (Charniak and Johnson, ... | The reference to 'PTB' lacks explicit context cues (e.g., treebank, corpus) to support its identification as the Penn Treebank. |
+| ambiguous_short_alias | ctxr_9da88ff6c9701d288368 | Penn Treebank | ambiguous_short_alias | PTB | sentence_text | false | insufficient_context | require_context_cue | PTB sets on many points. | The mention of 'PTB' lacks sufficient context to be confidently included in the object graph without supporting evidence from disambiguating terms like treeb... |
+| ambiguous_short_alias | ctxr_030e2aa31b6e2a88cfd3 | Penn Treebank | ambiguous_short_alias | PTB | context_window_neighbor | false | ambiguous_short_alias | require_context_cue | The split-mergesmooth implementation of (Petrov et al., 2006) consistently outperform various lexicalized and unlexicalized models for French (Seddah et al.,... | PTB is not sufficiently supported by local evidence cues to enter the object graph. |
+| ambiguous_short_alias | ctxr_494161a5316eec1bd588 | Penn Treebank | ambiguous_short_alias | PTB | sentence_text | false | ambiguous_short_alias | require_context_cue | PTB | The mention 'PTB' is too ambiguous without clear context cues and does not directly refer to the Penn Treebank. |
+| ambiguous_short_alias | ctxr_f33f15351a38203640bb | Penn Treebank | ambiguous_short_alias | PTB | context_window_neighbor | false | ambiguous_short_alias | require_context_cue | Penn TreeBank (Marcus et al., 1993) | The mention 'PTB' is an ambiguous shorthand for 'Penn Treebank' and lacks sufficient contextual cues to be confidently included in the object graph. |
+| ambiguous_short_alias | ctxr_7833ec3ab05c98cf6b34 | Penn Treebank | ambiguous_short_alias | PTB | context_window_neighbor | false | ambiguous_short_alias | require_context_cue | this system does not use products of latent models and more generally their method is orthogonal to ours | The surface form 'PTB' lacks sufficient contextual cues to be confidently associated with 'Penn Treebank'. |
+| ambiguous_short_alias | ctxr_d5557e0dde5af96f572d | Penn Treebank | ambiguous_short_alias | PTB | context_window_neighbor | false | insufficient_context | require_context_cue | PTB analyses. The first involves ambiguous punctuation, as al-ready noted (Maier et al., 2012) , where VPs separated by comma-punctuation are not actually co... | While 'PTB' refers to the 'Penn Treebank', the absence of strong contextual cues means it does not belong in the object graph. |
+| ambiguous_short_alias | ctxr_d859659758e453381153 | Penn Treebank | ambiguous_short_alias | PTB | context_window_neighbor | false | insufficient_context | require_context_cue | PTB | The mention 'PTB' lacks sufficient context to disambiguate it as the 'Penn Treebank', and is considered a generic term without the required context cues. |
+| ambiguous_short_alias | ctxr_fca466f7c46193cf633b | Penn Treebank | ambiguous_short_alias | PTB | sentence_text | false | ambiguous_short_alias | require_context_cue | PTB contain discontinuities | The mention 'PTB' can refer to the 'Penn Treebank', but lacks sufficient context cues to confidently place it in the object graph. |
+| ambiguous_short_alias | ctxr_2b5201587fd1ce18b9c2 | Penn Treebank | ambiguous_short_alias | PTB | context_window_neighbor | false | ambiguous_short_alias | require_context_cue | This has been done in the Discontinuous Penn Treebank (DPTB) (Evang and Kallmeyer, 2011) . | The context lacks the necessary cues (like 'treebank' or 'dataset') to confidently link PTB to Penn Treebank, hence it doesn't meet the requirement for objec... |
+| ambiguous_short_alias | ctxr_065657af5543ed78d301 | Penn Treebank | ambiguous_short_alias | PTB | sentence_text | false | ambiguous_short_alias | require_context_cue | using the PTB tagset (better than state-of-the-art) | The mention 'PTB' does not have sufficient context cues to reliably reference 'Penn Treebank'; therefore, it should not be included in the object graph witho... |
+| ambiguous_short_alias | ctxr_4d629f70f30300c8a7e0 | Penn Treebank | ambiguous_short_alias | PTB | sentence_text | false | ambiguous_short_alias | require_context_cue | PTB contain discontinuities | The mention 'PTB' lacks sufficient contextual cues related to 'Penn Treebank' and appears ambiguous in this context. |
+| ambiguous_short_alias | ctxr_41ca948307ad12754aee | Penn Treebank | ambiguous_short_alias | PTB | context_window_neighbor | false | insufficient_context | block_alias | the performance level, both for Charniak's parser (Charniak, 2000) and the Berke-ley parser (Petrov et al., 2006) was higher for parsing the PTB than it was ... | The mention 'PTB' does not have sufficient contextual cues to clarify its reference to the 'Penn Treebank', leading to a classification of ambiguous short al... |
+| ambiguous_short_alias | ctxr_c1e543f5ce3752dd2844 | Penn Treebank | ambiguous_short_alias | PTB | context_window_neighbor | false | context_neighbor_not_relevant | require_context_cue | After the release of the Penn Treebank (PTB) (Marcus et al., 1993) and the PARSEVAL metrics (Black et al., 1991) , some new corpusbased syntactic parsing tec... | The context does not provide the necessary cues to support the use of 'PTB' directly in the object graph. |
+| ambiguous_short_alias | ctxr_e5f409b1523584a4866d | Penn Treebank | ambiguous_short_alias | PTB | sentence_text | false | ambiguous_short_alias | lower_confidence | which employ hand-crafted grammars and treebank-trained disambiguators in order to determine whether a system less tuned to the PTB is more appropriate for t... | The use of 'PTB' is valid but lacks the necessary context cues (like 'treebank' or 'dataset') to support inclusion in the object graph. |
+| ambiguous_short_alias | ctxr_1ebbe156b30502e2af7a | Penn Treebank | ambiguous_short_alias | PTB | sentence_text | false | ambiguous_short_alias | require_context_cue | Cahill et al. (2004) automatically construct LFG f-structures from PTB trees, a work adapted for various other languages including French (Schluter and van G... | The abbreviation PTB refers to Penn Treebank but lacks necessary context cues to support its inclusion in the object graph. |
+| ambiguous_short_alias | ctxr_11d594ca118d2c064e60 | Penn Treebank | ambiguous_short_alias | PTB | context_window_neighbor | false | ambiguous_short_alias | require_context_cue | By automatically transforming the constituent structure trees annotated in PTB to other linguistic formalisms, such as dependency grammar, and combinatory ca... | The mention 'PTB' lacks sufficient context cues to support its inclusion in the object graph despite correctly referring to the 'Penn Treebank'. |
 
 ## Registry Refinement Recommendations
-Dry-run only: prompts and sample were generated, but no model decisions were collected.
+| recommended_action | object_id | canonical_name | surface_form | rows |
+| --- | --- | --- | --- | --- |
+| require_context_cue | obj_penn_treebank | Penn Treebank | PTB | 26 |
+| keep_as_feature_only | obj_transformer | Transformer | transformer | 8 |
+| block_alias | obj_bleu | BLEU | BLEU | 3 |
+| block_alias | obj_penn_treebank | Penn Treebank | PTB | 3 |
+| block_alias | obj_transformer | Transformer | transformer | 3 |
+| block_alias | obj_seq2seq | seq2seq | Encoder{--}Decoder | 2 |
+| block_alias | obj_wordnet | WordNet | WordNet | 2 |
+| block_alias | obj_squad | SQuAD | Stanford Question Answering Dataset | 1 |
+| change_object_type | obj_transformer | Transformer | transformers | 1 |
+| keep_as_feature_only | obj_meteor | METEOR | METEOR | 1 |
+| keep_as_feature_only | obj_transformer | Transformer | transformers | 1 |
+| lower_confidence | obj_penn_treebank | Penn Treebank | PTB | 1 |
+| lower_confidence | obj_transformer | Transformer | transformer | 1 |
+| require_context_cue | obj_bert | BERT | BERT | 1 |
+| require_context_cue | obj_seq2seq | seq2seq | Encoder{--}Decoder | 1 |
 
 ## Sample Rows
 | review_bucket | context_id | canonical_name | object_category | surface_form | matched_in | confidence | allow_in_object_graph | sentence_text |
