@@ -14,6 +14,15 @@ from citeevidence.acl.aligned_graph import (
     DEFAULT_CROSSWALK_PATH,
     build_aligned_acl_citation_graph,
 )
+from citeevidence.acl.full_sections import (
+    DEFAULT_FULL_SECTIONS_PARSE_REPORT,
+    DEFAULT_FULL_SECTIONS_STRUCTURE_REPORT,
+    DEFAULT_SECTIONED_CONTEXT_SAMPLE_PATH,
+    DEFAULT_SECTIONED_SAMPLE_REFERENCE_PATH,
+    DEFAULT_SECTIONED_SECTIONS_PATH,
+    inspect_full_sections_data,
+    parse_full_sections_data,
+)
 from citeevidence.acl.id_audit import (
     DEFAULT_SCHEMA_ID_AUDIT_REPORT,
     DEFAULT_SCHEMA_INVENTORY_PATH,
@@ -135,6 +144,85 @@ def parse_acl(
     console.print(
         f"Wrote {len(result.papers)} papers, {len(result.references)} references, and "
         f"{len(result.sections)} sections to {out_dir}."
+    )
+
+
+@acl_app.command("inspect-full-sections")
+def inspect_full_sections(
+    raw_dir: Annotated[
+        Path,
+        typer.Option("--raw-dir", help="Directory containing raw ACL-OCL files."),
+    ],
+    out_report: Annotated[
+        Path,
+        typer.Option("--out-report", help="Output markdown structure report path."),
+    ] = DEFAULT_FULL_SECTIONS_STRUCTURE_REPORT,
+) -> None:
+    """Inspect ACL-OCL full-sections sources without assuming pickle structure."""
+    try:
+        result = inspect_full_sections_data(raw_dir=raw_dir, out_report=out_report)
+    except (FileNotFoundError, NotADirectoryError, OSError, ValueError) as exc:
+        error_console.print(f"[red]Failed to inspect full-sections data:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    console.print(
+        f"Wrote full-sections structure report to {out_report}. "
+        f"Recoverable paragraph rows: {result.metrics.get('recoverable_paragraph_rows', 0)}."
+    )
+
+
+@acl_app.command("parse-full-sections")
+def parse_full_sections(
+    input_path: Annotated[
+        Path,
+        typer.Option("--input", help="Path to ACL-OCL full-sections pickle."),
+    ],
+    out: Annotated[
+        Path,
+        typer.Option("--out", help="Output section-aware ACL sections parquet path."),
+    ] = DEFAULT_SECTIONED_SECTIONS_PATH,
+    report: Annotated[
+        Path,
+        typer.Option("--report", help="Output full-sections parse report path."),
+    ] = DEFAULT_FULL_SECTIONS_PARSE_REPORT,
+    references: Annotated[
+        Path,
+        typer.Option("--references", help="Optional references parquet for sample contexts."),
+    ] = DEFAULT_SECTIONED_SAMPLE_REFERENCE_PATH,
+    sample_contexts_out: Annotated[
+        Path | None,
+        typer.Option(
+            "--sample-contexts-out",
+            help="Optional output path for bounded sectioned citation-context sample.",
+        ),
+    ] = DEFAULT_SECTIONED_CONTEXT_SAMPLE_PATH,
+    sample_context_section_rows: Annotated[
+        int,
+        typer.Option(
+            "--sample-context-section-rows",
+            min=1,
+            help="Number of section rows to use for the sample context extraction.",
+        ),
+    ] = 10_000,
+) -> None:
+    """Parse ACL-OCL full-sections pickle into section-aware paragraph rows."""
+    try:
+        result = parse_full_sections_data(
+            input_path=input_path,
+            out_path=out,
+            report_path=report,
+            references_path=references,
+            sample_contexts_out=sample_contexts_out,
+            sample_context_section_rows=sample_context_section_rows,
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        error_console.print(f"[red]Failed to parse full-sections data:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    console.print(
+        f"Wrote {len(result.sections)} section-aware paragraphs to {out}. "
+        f"Section name non-empty rate: {result.metrics['section_name_non_empty_rate']}. "
+        f"Report: {report}."
     )
 
 
