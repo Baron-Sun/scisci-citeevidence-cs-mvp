@@ -1,0 +1,2 @@
+{"paper_id": "P1", "title": "JSONL Paper", "year": 2021, "sections": [{"heading": "Introduction"}], "paragraphs": ["We cite prior work (Smith, 2020)."], "references": [{"id": "R1"}], "inline_citations": ["(Smith, 2020)"]}
+{"paper_id": "P2", "title": "Second JSONL Paper", "year": 2022, "sections": [{"heading": "Results"}], "paragraphs": ["Results improve over [1]."], "references": [{"id": "R2"}], "inline_citations": ["[1]"]}

@@ -1,0 +1,4 @@
+id,source,target,section,string,citation,label,is_multisentence
+sc-1,citing-sc-1,cited-background,Introduction,"Prior work studied citation intent in scientific papers.","[1]",background,false
+sc-2,citing-sc-2,cited-method,Methods,"We follow the neural baseline method for sentence classification.","[2]",method,false
+sc-3,citing-sc-3,cited-result,Results,"Our model obtains higher accuracy than the reported result.","[3]",result,true

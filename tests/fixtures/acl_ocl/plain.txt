@@ -1,0 +1,7 @@
+Title: Plain Text Paper
+
+Methods
+We compare against prior sequence tagging work (Lee, 2019).
+
+References
+[1] Lee, 2019.

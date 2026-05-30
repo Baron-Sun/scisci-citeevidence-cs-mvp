@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scisci-citeevidence-cs-mvp"
+version = "0.1.0"
+description = "Evidence-grounded citation function analysis scaffold for NLP and Computational Linguistics papers."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pandas",
+    "pyarrow",
+    "pydantic",
+    "PyYAML",
+    "typer",
+    "rich",
+    "numpy",
+    "scikit-learn",
+    "lxml",
+    "beautifulsoup4",
+    "rapidfuzz",
+    "matplotlib",
+    "pytest",
+    "ruff",
+    "mypy",
+]
+
+[project.scripts]
+citeevidence = "citeevidence.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-p", "no:opik"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.11"
+packages = ["citeevidence"]
+strict = true

@@ -1,0 +1,15 @@
+project_title: "From Citation Counts to Citation Evidence"
+domain: "NLP / Computational Linguistics"
+target_contexts_min: 10000
+target_contexts_max: 50000
+max_llm_labels: 5000
+max_human_validation: 500
+
+datasets:
+  labeled:
+    - multicite
+    - scicite
+  unlabeled_large_scale:
+    - acl_ocl
+  optional_extension:
+    - unarxive

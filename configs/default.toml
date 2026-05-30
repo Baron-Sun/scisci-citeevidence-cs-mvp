@@ -1,0 +1,5 @@
+[project]
+name = "scisci-citeevidence-cs-mvp"
+
+[pipeline]
+status = "scaffold-only"

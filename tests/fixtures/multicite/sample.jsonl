@@ -1,0 +1,2 @@
+{"id": "mc-1", "paper_id": "citing-mc-1", "reference_id": "cited-transformer", "section": "Methods", "context": "We use the Transformer architecture for sequence modeling.", "citation_marker": "(Vaswani et al., 2017)", "label": "Uses"}
+{"id": "mc-2", "paper_id": "citing-mc-2", "reference_id": "cited-parser", "section": "Discussion", "context": "Unlike the earlier parser, our model avoids this limitation in long sentences.", "citation_marker": "(Doe, 2018)", "label": "Differences"}

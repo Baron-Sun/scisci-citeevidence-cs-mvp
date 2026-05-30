@@ -1,0 +1,36 @@
+intent:
+  - background
+  - uses
+  - compares_against
+  - extends
+  - critiques
+  - applies
+
+object_type:
+  - method
+  - dataset_or_database
+  - software_or_tool
+  - benchmark_or_protocol
+  - metric
+  - claim_or_finding
+  - theory_or_concept
+
+relation_subtype:
+  - direct_use
+  - adapt_to_domain
+  - combine_with
+  - compare_against
+  - critique_limitation
+  - improve
+  - replace
+  - component_use
+
+method_edge_type:
+  - extends
+  - improves
+  - replaces
+  - adapts
+  - uses_component
+  - compares
+  - background
+  - not_method_related
