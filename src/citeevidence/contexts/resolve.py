@@ -110,7 +110,8 @@ class CandidatePaper:
     cited_year: str | None
     cited_authors: str | None
     cited_doi: str | None
-    surnames: frozenset[str]
+    first_surname: str | None
+    all_surnames: tuple[str, ...]
 
 
 def resolve_citation_markers_pilot(
@@ -422,6 +423,7 @@ def _load_candidate_index(
 
     index: dict[str, list[CandidatePaper]] = {}
     for row in graph.itertuples(index=False):
+        surnames = tuple(row.candidate_surnames)
         candidate = CandidatePaper(
             cited_acl_id=str(row.cited_acl_id),
             cited_corpus_paper_id=_int_or_none(row.cited_corpus_paper_id),
@@ -429,7 +431,8 @@ def _load_candidate_index(
             cited_year=_year_string(row.cited_year),
             cited_authors=_clean_text_or_none(row.cited_authors),
             cited_doi=_clean_text_or_none(row.cited_doi),
-            surnames=frozenset(row.candidate_surnames),
+            first_surname=surnames[0] if surnames else None,
+            all_surnames=surnames,
         )
         index.setdefault(str(row.citing_acl_id), []).append(candidate)
     return index
@@ -440,7 +443,7 @@ def _resolve_contexts(
     candidate_index: dict[str, list[CandidatePaper]],
 ) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
-    for row_number, row in enumerate(contexts.to_dict(orient="records")):
+    for row in contexts.to_dict(orient="records"):
         source_context_id = _clean_text(row.get("context_id"))
         citing_paper_id = _clean_text(row.get("citing_paper_id"))
         components = parse_citation_marker(
@@ -463,13 +466,17 @@ def _resolve_contexts(
             output_row["candidate_count_for_citing_paper"] = len(candidates)
             output_row["context_id"] = _resolved_context_id(
                 source_context_id=source_context_id,
-                row_number=row_number,
-                component_index=component_index,
+                marker_component_index=component_index,
+                marker_component_text=component.text,
+                parsed_surnames=output_row["parsed_surnames"],
+                parsed_year=component.year,
                 resolution_status=output_row["resolution_status"],
+                resolved_cited_acl_id=output_row["resolved_cited_acl_id"],
                 matched_candidate_acl_ids=output_row["matched_candidate_acl_ids"],
             )
             rows.append(output_row)
-    return pd.DataFrame(rows, columns=OUTPUT_COLUMNS)
+    resolved = pd.DataFrame(rows, columns=OUTPUT_COLUMNS)
+    return _ensure_unique_resolved_context_ids(resolved)
 
 
 def _resolve_component(
@@ -519,25 +526,43 @@ def _resolve_component(
             candidates=[],
         )
 
-    matched = [
-        candidate
-        for candidate in year_candidates
-        if _candidate_matches_surnames(component, candidate)
-    ]
-    if len(matched) == 1:
+    clear_matches: list[CandidatePaper] = []
+    weak_matches: list[CandidatePaper] = []
+    for candidate in year_candidates:
+        match_strength = _candidate_author_match(component, candidate)
+        if match_strength == "clear":
+            clear_matches.append(candidate)
+        elif match_strength == "weak":
+            weak_matches.append(candidate)
+
+    if len(clear_matches) == 1:
         confidence = 0.95 if len(component.surnames) >= 2 and not component.is_et_al else 0.90
         return _resolved_fields(
-            matched[0],
+            clear_matches[0],
             status="author_year_clear",
             confidence=confidence,
             method="author_year_candidate_graph",
-            matched_candidates=matched,
+            matched_candidates=clear_matches,
         )
-    if len(matched) > 1:
+    if len(clear_matches) > 1:
         return _unresolved_fields(
             status="multi_candidate_ambiguous",
             method="author_year_multiple_candidates",
-            candidates=matched,
+            candidates=clear_matches,
+        )
+    if len(weak_matches) == 1:
+        return _resolved_fields(
+            weak_matches[0],
+            status="author_year_weak_nonfirst_author",
+            confidence=0.55,
+            method="author_year_nonfirst_author_candidate_graph",
+            matched_candidates=weak_matches,
+        )
+    if len(weak_matches) > 1:
+        return _unresolved_fields(
+            status="multi_candidate_ambiguous",
+            method="author_year_multiple_weak_nonfirst_candidates",
+            candidates=weak_matches,
         )
     return _unresolved_fields(
         status="bibliography_unresolved",
@@ -546,14 +571,30 @@ def _resolve_component(
     )
 
 
-def _candidate_matches_surnames(component: MarkerComponent, candidate: CandidatePaper) -> bool:
-    if not component.surnames or not candidate.surnames:
-        return False
-    if component.surnames[0] not in candidate.surnames:
-        return False
-    if component.is_et_al or len(component.surnames) == 1:
-        return True
-    return all(surname in candidate.surnames for surname in component.surnames)
+def _candidate_author_match(
+    component: MarkerComponent,
+    candidate: CandidatePaper,
+) -> str | None:
+    if not component.surnames or not candidate.all_surnames:
+        return None
+
+    parsed = component.surnames
+    candidate_surnames = set(candidate.all_surnames)
+    first_surname = candidate.first_surname
+
+    if component.is_et_al:
+        return "clear" if parsed[0] == first_surname else None
+
+    if len(parsed) == 1:
+        if parsed[0] == first_surname:
+            return "clear"
+        if parsed[0] in candidate_surnames:
+            return "weak"
+        return None
+
+    if not all(surname in candidate_surnames for surname in parsed):
+        return None
+    return "clear" if parsed[0] == first_surname else "weak"
 
 
 def _resolved_fields(
@@ -875,21 +916,60 @@ def _strip_outer_parens(text: str) -> str:
 def _resolved_context_id(
     *,
     source_context_id: str,
-    row_number: int,
-    component_index: int,
+    marker_component_index: int,
+    marker_component_text: str,
+    parsed_surnames: str,
+    parsed_year: str | None,
     resolution_status: str,
+    resolved_cited_acl_id: str | None,
     matched_candidate_acl_ids: str,
 ) -> str:
-    payload = "\x1f".join(
-        [
-            source_context_id,
-            str(row_number),
-            str(component_index),
-            resolution_status,
-            matched_candidate_acl_ids,
-        ]
+    payload = json.dumps(
+        {
+            "source_context_id": source_context_id,
+            "marker_component_index": marker_component_index,
+            "marker_component_text": marker_component_text,
+            "parsed_surnames": parsed_surnames,
+            "parsed_year": parsed_year,
+            "resolution_status": resolution_status,
+            "resolved_cited_acl_id": resolved_cited_acl_id,
+            "matched_candidate_acl_ids": matched_candidate_acl_ids,
+        },
+        sort_keys=True,
+        ensure_ascii=True,
     )
     return f"ctxr_{hashlib.sha256(payload.encode('utf-8')).hexdigest()[:20]}"
+
+
+def _ensure_unique_resolved_context_ids(frame: pd.DataFrame) -> pd.DataFrame:
+    if frame.empty or frame["context_id"].is_unique:
+        return frame
+    result = frame.copy()
+    duplicates = result["context_id"].duplicated(keep=False)
+    for index, row in result.loc[duplicates].iterrows():
+        payload = {
+            column: _stable_json_value(value)
+            for column, value in row.items()
+            if column != "context_id"
+        }
+        digest = hashlib.sha256(
+            json.dumps(payload, sort_keys=True, ensure_ascii=True).encode("utf-8")
+        ).hexdigest()[:12]
+        result.at[index, "context_id"] = f"{row['context_id']}_{digest}"
+    return result
+
+
+def _stable_json_value(value: Any) -> Any:
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if hasattr(value, "item"):
+        return value.item()
+    return value
 
 
 def _ensure_columns(frame: pd.DataFrame, columns: list[str]) -> pd.DataFrame:

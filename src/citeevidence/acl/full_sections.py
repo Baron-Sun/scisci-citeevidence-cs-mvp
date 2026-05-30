@@ -7,6 +7,7 @@ import re
 import sys
 import tempfile
 import types
+import unicodedata
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -57,6 +58,13 @@ NORMALIZED_SECTIONS = [
     "conclusion",
     "appendix",
     "references",
+    "acknowledgement",
+    "dataset",
+    "analysis",
+    "error_analysis",
+    "implementation",
+    "system_description",
+    "task_definition",
     "unknown",
 ]
 CITATION_MARKER_RE = re.compile(
@@ -185,29 +193,89 @@ def normalize_section_name(section_name: Any) -> str:
         return "introduction"
     if _contains_any(
         normalized,
-        ["related work", "previous work", "prior work", "literature review"],
+        [
+            "related work",
+            "related research",
+            "previous work",
+            "prior work",
+            "literature review",
+        ],
     ):
         return "related_work"
-    if _contains_any(normalized, ["background", "preliminar"]):
+    if _contains_any(normalized, ["background", "preliminar", "motivation"]):
         return "background"
-    if _contains_any(normalized, ["method", "methodology", "approach", "algorithm"]):
+    if normalized in {"task", "tasks"} or _contains_any(
+        normalized,
+        [
+            "task definition",
+            "task description",
+            "task formulation",
+            "problem definition",
+            "problem formulation",
+            "problem statement",
+        ],
+    ):
+        return "task_definition"
+    if normalized in {"definition", "definitions", "notation"}:
+        return "background"
+    if normalized in {"system", "systems"} or _contains_any(
+        normalized,
+        [
+            "system description",
+            "system overview",
+            "system summary",
+            "baseline system",
+        ],
+    ):
+        return "system_description"
+    if _contains_any(normalized, ["error analysis", "error analyses"]):
+        return "error_analysis"
+    if _contains_any(normalized, ["implementation", "implementation details"]):
+        return "implementation"
+    if _contains_any(normalized, ["data set", "dataset", "corpus", "corpora", "resource"]):
+        return "dataset"
+    if _contains_word(normalized, ["data", "datasets", "annotation", "annotations"]):
+        return "dataset"
+    if _contains_any(
+        normalized,
+        [
+            "method",
+            "methodology",
+            "approach",
+            "algorithm",
+            "preprocessing",
+            "pre processing",
+            "feature extraction",
+            "feature selection",
+            "feature engineering",
+            "optimization",
+            "parameter estimation",
+        ],
+    ):
         return "method"
     if _contains_any(normalized, ["model", "architecture"]):
         return "model"
     if _contains_any(normalized, ["experiment", "experimental", "setup"]):
         return "experiment"
-    if _contains_any(normalized, ["evaluation", "eval", "assessment"]):
+    if _contains_any(normalized, ["evaluation", "eval", "assessment", "metric"]):
         return "evaluation"
-    if _contains_any(normalized, ["result", "analysis"]):
+    if _contains_any(normalized, ["result"]):
         return "results"
-    if _contains_any(normalized, ["discussion", "error analysis", "limitations"]):
+    if _contains_any(
+        normalized,
+        ["discussion", "limitations", "ethical consideration", "ethics"],
+    ):
         return "discussion"
-    if _contains_any(normalized, ["conclusion", "future work", "summary"]):
+    if _contains_any(normalized, ["ablation", "analysis", "analyses"]):
+        return "analysis"
+    if _contains_any(normalized, ["conclusion", "concluding", "future work", "summary"]):
         return "conclusion"
-    if _contains_any(normalized, ["appendix", "supplement"]):
+    if _contains_any(normalized, ["appendix", "appendices", "annex", "supplement"]):
         return "appendix"
     if _contains_any(normalized, ["reference", "bibliography"]):
         return "references"
+    if _contains_any(normalized, ["acknowledg", "remerciement", "funding"]):
+        return "acknowledgement"
     return "unknown"
 
 
@@ -542,6 +610,7 @@ def _write_sectioned_context_sample(
             sections_path=sections_path,
             references_path=refs_path,
             out_path=out_path,
+            use_bibliography=False,
         )
     return {
         "status": "written",
@@ -806,7 +875,13 @@ def _contains_any(text: str, needles: list[str]) -> bool:
     return any(needle in text for needle in needles)
 
 
+def _contains_word(text: str, words: list[str]) -> bool:
+    return any(re.search(rf"\b{re.escape(word)}\b", text) for word in words)
+
+
 def _normalize_heading_text(text: str) -> str:
+    text = unicodedata.normalize("NFKD", text)
+    text = "".join(char for char in text if not unicodedata.combining(char))
     text = re.sub(r"^\s*(?:appendix\s+)?[0-9ivxlcdm]+(?:\.[0-9]+)*\.?\s+", "", text)
     text = re.sub(r"[^a-zA-Z0-9&/ -]", " ", text)
     return re.sub(r"\s+", " ", text).strip().lower()

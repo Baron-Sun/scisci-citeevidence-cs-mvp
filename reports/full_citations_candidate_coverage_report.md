@@ -37,11 +37,11 @@ Unique candidate edges are deduplicated by `(citing_acl_id, cited_acl_id)`.
 ## Bibliography-Unresolved Author-Year Coverage
 | metric | value |
 | --- | --- |
-| bibliography_unresolved author-year rows | 67538 |
+| bibliography_unresolved author-year rows | 68703 |
 | gain at least one same-year candidate | 0 |
 | gain at least one same-year + surname candidate | 0 |
 | become ambiguous due to multiple surname candidates | 0 |
-| union same-year + surname candidate rows | 0 |
+| union same-year + surname candidate rows | 1165 |
 | full_citations-only same-year + surname candidate rows | 0 |
 
 ## Risk Analysis

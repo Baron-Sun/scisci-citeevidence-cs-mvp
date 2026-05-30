@@ -22,6 +22,8 @@ class AttributionStatus(StrEnum):
     MULTI_CITATION_GROUP = "multi_citation_group"
     CITATION_RANGE = "citation_range"
     BIBLIOGRAPHY_UNRESOLVED = "bibliography_unresolved"
+    NUMERIC_UNRESOLVED_PRE_RESOLUTION = "numeric_unresolved_pre_resolution"
+    AUTHOR_YEAR_UNRESOLVED_PRE_RESOLUTION = "author_year_unresolved_pre_resolution"
     PARSER_ERROR = "parser_error"
 
 

@@ -40,6 +40,11 @@ from citeevidence.acl.id_audit import (
 )
 from citeevidence.acl.inspector import DEFAULT_INVENTORY_PATH, inspect_acl_ocl_data
 from citeevidence.acl.reader import parse_acl_ocl_data
+from citeevidence.acl.section_normalization import (
+    DEFAULT_NORMALIZED_SECTIONED_SECTIONS_PATH,
+    DEFAULT_SECTION_NORMALIZATION_REPORT,
+    normalize_sectioned_sections,
+)
 from citeevidence.config import ConfigLoadError, load_project_config
 from citeevidence.contexts.audit import DEFAULT_CONTEXT_FLAGS_PATH, audit_citation_contexts
 from citeevidence.contexts.extract import extract_citation_contexts
@@ -381,6 +386,48 @@ def evaluate_full_citations(
     )
 
 
+@acl_app.command("normalize-sections")
+def normalize_sections(
+    input_path: Annotated[
+        Path,
+        typer.Option("--input", help="Path to acl_sections_sectioned.parquet."),
+    ] = DEFAULT_SECTIONED_SECTIONS_PATH,
+    out: Annotated[
+        Path,
+        typer.Option("--out", help="Output normalized section-aware sections parquet path."),
+    ] = DEFAULT_NORMALIZED_SECTIONED_SECTIONS_PATH,
+    report: Annotated[
+        Path,
+        typer.Option("--report", help="Output section normalization audit report path."),
+    ] = DEFAULT_SECTION_NORMALIZATION_REPORT,
+    top_n_unknown: Annotated[
+        int,
+        typer.Option(
+            "--top-n-unknown",
+            min=1,
+            help="Number of raw unknown section names to include in the audit.",
+        ),
+    ] = 300,
+) -> None:
+    """Normalize explicit section headings and audit unknown rates."""
+    try:
+        metrics = normalize_sectioned_sections(
+            input_path=input_path,
+            out_path=out,
+            report_path=report,
+            top_n_unknown=top_n_unknown,
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        error_console.print(f"[red]Failed to normalize section headings:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    console.print(
+        f"Wrote {metrics['output_rows']} normalized section rows to {out}. "
+        f"Unknown rate: {metrics['unknown_rate_before']} -> "
+        f"{metrics['unknown_rate_after']}. Report: {report}."
+    )
+
+
 @config_app.command("show")
 def show_config(
     config: Annotated[
@@ -404,14 +451,65 @@ def extract_contexts(
         Path,
         typer.Option("--sections", help="Path to acl_sections.parquet."),
     ],
-    references: Annotated[
-        Path,
-        typer.Option("--references", help="Path to acl_references.parquet."),
-    ],
     out: Annotated[
         Path,
         typer.Option("--out", help="Output parquet path for citation contexts."),
     ],
+    references: Annotated[
+        Path | None,
+        typer.Option(
+            "--references",
+            help="Optional true local bibliography parquet path.",
+        ),
+    ] = None,
+    max_window_chars: Annotated[
+        int,
+        typer.Option(
+            "--max-window-chars",
+            min=100,
+            help="Maximum characters retained in bounded context windows.",
+        ),
+    ] = 2000,
+    use_bibliography: Annotated[
+        bool,
+        typer.Option(
+            "--use-bibliography",
+            help=(
+                "Resolve markers against --references. By default extraction is "
+                "pre-resolution and cited metadata is left empty."
+            ),
+        ),
+    ] = False,
+) -> None:
+    """Extract citation contexts from parsed ACL sections."""
+    try:
+        contexts = extract_citation_contexts(
+            sections_path=sections,
+            references_path=references,
+            out_path=out,
+            max_window_chars=max_window_chars,
+            use_bibliography=use_bibliography,
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        error_console.print(f"[red]Failed to extract citation contexts:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    console.print(f"Wrote {len(contexts)} citation contexts to {out}.")
+
+
+@contexts_app.command("extract-sectioned")
+def extract_sectioned_contexts(
+    sections: Annotated[
+        Path,
+        typer.Option(
+            "--sections",
+            help="Path to section-aware ACL sections parquet.",
+        ),
+    ] = DEFAULT_SECTIONED_SECTIONS_PATH,
+    out: Annotated[
+        Path,
+        typer.Option("--out", help="Output parquet path for sectioned citation contexts."),
+    ] = Path("data/processed/citation_contexts_sectioned.parquet"),
     max_window_chars: Annotated[
         int,
         typer.Option(
@@ -421,19 +519,20 @@ def extract_contexts(
         ),
     ] = 2000,
 ) -> None:
-    """Extract citation contexts from parsed ACL sections and references."""
+    """Extract pre-resolution citation contexts from section-aware ACL paragraphs."""
     try:
         contexts = extract_citation_contexts(
             sections_path=sections,
-            references_path=references,
             out_path=out,
+            references_path=None,
             max_window_chars=max_window_chars,
+            use_bibliography=False,
         )
     except (FileNotFoundError, OSError, ValueError) as exc:
-        error_console.print(f"[red]Failed to extract citation contexts:[/red] {exc}")
+        error_console.print(f"[red]Failed to extract sectioned citation contexts:[/red] {exc}")
         raise typer.Exit(1) from exc
 
-    console.print(f"Wrote {len(contexts)} citation contexts to {out}.")
+    console.print(f"Wrote {len(contexts)} pre-resolution citation contexts to {out}.")
 
 
 @contexts_app.command("audit")

@@ -53,6 +53,10 @@ def _write_resolution_inputs(tmp_path: Path) -> tuple[Path, Path, Path, Path, Pa
             _context_row("ctx_numeric", "P1", "[1, 2]"),
             _context_row("ctx_no_graph", "NO-GRAPH", "(Smith, 2020)"),
             _context_row("ctx_ambiguous", "P1", "(Smith, 2020)"),
+            _context_row("ctx_first_single", "P2", "(Alice, 2012)"),
+            _context_row("ctx_nonfirst_single", "P2", "(Broda, 2012)"),
+            _context_row("ctx_et_al_nonfirst", "P2", "(Broda et al., 2012)"),
+            _context_row("ctx_two_explicit", "P2", "(Alice and Broda, 2012)"),
             _context_row("ctx_dup", "P1", "(Vinyals et al., 2014)"),
             _context_row("ctx_dup", "P1", "(Elsner and Charniak, 2010)"),
             _context_row("ctx_malformed", "P1", "(not a citation)"),
@@ -79,6 +83,14 @@ def _write_resolution_inputs(tmp_path: Path) -> tuple[Path, Path, Path, Path, Pa
             _candidate("P1", "C7", 107, "Second 2011", 2011, "Roe, Richard"),
             _candidate("P1", "C8", 108, "First Smith", 2020, "Smith, Ann"),
             _candidate("P1", "C9", 109, "Second Smith", 2020, "Smith, Bob"),
+            _candidate(
+                "P2",
+                "C10",
+                110,
+                "Second Author Trap",
+                2012,
+                "Alice, Ann and Broda, Bob",
+            ),
         ]
     )
     graph.to_parquet(graph_path, index=False)
@@ -159,6 +171,11 @@ def test_resolve_citation_markers_pilot_rules(tmp_path: Path) -> None:
     assert _status_for(resolved, "ctx_numeric") == "numeric_marker_unresolved_no_bibliography"
     assert _status_for(resolved, "ctx_no_graph") == "citing_paper_not_in_aligned_graph"
     assert _status_for(resolved, "ctx_ambiguous") == "multi_candidate_ambiguous"
+    assert _status_for(resolved, "ctx_first_single") == "author_year_clear"
+    assert _status_for(resolved, "ctx_nonfirst_single") == "author_year_weak_nonfirst_author"
+    assert _status_for(resolved, "ctx_et_al_nonfirst") == "bibliography_unresolved"
+    assert _status_for(resolved, "ctx_two_explicit") == "author_year_clear"
+    assert _row_for(resolved, "ctx_nonfirst_single")["resolution_confidence"] == 0.55
     assert _status_for(resolved, "ctx_malformed") == "bibliography_unresolved"
     assert resolved.loc[resolved["source_context_id"].eq("ctx_group")].shape[0] == 2
     group_statuses = set(
@@ -170,6 +187,41 @@ def test_resolve_citation_markers_pilot_rules(tmp_path: Path) -> None:
     assert pd.read_parquet(failures_path)["resolution_status"].ne("author_year_clear").all()
     assert "resolved_cited_title non-empty rate" in report
     assert "## Before / After Comparison" in report
+
+
+def test_resolved_context_ids_are_row_order_independent(tmp_path: Path) -> None:
+    contexts_path, graph_path, crosswalk_path, out_path, failures_path, report_path = (
+        _write_resolution_inputs(tmp_path)
+    )
+    shuffled_contexts_path = tmp_path / "citation_contexts_shuffled.parquet"
+    shuffled_out_path = tmp_path / "citation_contexts_resolved_shuffled.parquet"
+    shuffled_failures_path = tmp_path / "failures_shuffled.parquet"
+    shuffled_report_path = tmp_path / "report_shuffled.md"
+    pd.read_parquet(contexts_path).iloc[::-1].to_parquet(shuffled_contexts_path, index=False)
+
+    resolve_citation_markers_pilot(
+        contexts_path=contexts_path,
+        aligned_graph_path=graph_path,
+        crosswalk_path=crosswalk_path,
+        out_path=out_path,
+        failures_path=failures_path,
+        report_path=report_path,
+        limit=100,
+    )
+    resolve_citation_markers_pilot(
+        contexts_path=shuffled_contexts_path,
+        aligned_graph_path=graph_path,
+        crosswalk_path=crosswalk_path,
+        out_path=shuffled_out_path,
+        failures_path=shuffled_failures_path,
+        report_path=shuffled_report_path,
+        limit=100,
+    )
+
+    original = _stable_context_id_map(pd.read_parquet(out_path))
+    shuffled = _stable_context_id_map(pd.read_parquet(shuffled_out_path))
+
+    assert original == shuffled
 
 
 def test_author_year_surname_parsing() -> None:
@@ -270,7 +322,7 @@ def test_resolve_markers_cli(tmp_path: Path) -> None:
     )
 
     assert result.exit_code == 0
-    assert "Processed 11 contexts" in result.stdout
+    assert "Processed 15 contexts" in result.stdout
     assert out_path.exists()
     assert failures_path.exists()
     assert report_path.exists()
@@ -282,3 +334,21 @@ def _row_for(frame: pd.DataFrame, source_context_id: str) -> pd.Series:
 
 def _status_for(frame: pd.DataFrame, source_context_id: str) -> str:
     return str(_row_for(frame, source_context_id)["resolution_status"])
+
+
+def _stable_context_id_map(frame: pd.DataFrame) -> dict[tuple[object, ...], str]:
+    keys = [
+        "source_context_id",
+        "marker_component_index",
+        "marker_component_text",
+        "parsed_surnames",
+        "parsed_year",
+        "resolution_status",
+        "resolved_cited_acl_id",
+        "matched_candidate_acl_ids",
+    ]
+    clean = frame.where(pd.notna(frame), None)
+    return {
+        tuple(row[column] for column in keys): str(row["context_id"])
+        for row in clean.to_dict(orient="records")
+    }

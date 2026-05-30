@@ -98,17 +98,28 @@ class CitationMarker:
 def extract_citation_contexts(
     *,
     sections_path: str | Path,
-    references_path: str | Path,
     out_path: str | Path,
+    references_path: str | Path | None = None,
     max_window_chars: int = 2000,
+    use_bibliography: bool = False,
 ) -> pd.DataFrame:
-    """Extract bounded citation-context windows from parsed ACL-OCL sections."""
+    """Extract bounded citation-context windows from parsed ACL-OCL sections.
+
+    ACL-OCL extraction is pre-resolution by default: citation markers are grounded
+    in local text, but cited-paper metadata stays empty until a later resolver has
+    an authoritative bibliography or aligned citation graph.
+    """
     if max_window_chars < 100:
         raise ValueError("max_window_chars must be at least 100")
 
     sections = pd.read_parquet(sections_path, columns=SECTION_COLUMNS)
     paper_ids = set(sections["paper_id"].dropna().astype(str))
-    references = _load_references(references_path, paper_ids)
+    if use_bibliography:
+        if references_path is None:
+            raise ValueError("references_path is required when use_bibliography=True")
+        references = _load_references(references_path, paper_ids)
+    else:
+        references = pd.DataFrame(columns=REFERENCE_COLUMNS)
     reference_index = _build_reference_index(references)
 
     rows: list[dict[str, Any]] = []
@@ -121,6 +132,7 @@ def extract_citation_contexts(
                 paragraph_text=_clean_text(section.paragraph_text),
                 references=reference_index.get(str(section.paper_id), {}),
                 max_window_chars=max_window_chars,
+                use_bibliography=use_bibliography,
             )
         )
 
@@ -157,16 +169,26 @@ def _extract_from_section(
     paragraph_text: str,
     references: dict[str, dict[str, Any]],
     max_window_chars: int,
+    use_bibliography: bool,
 ) -> list[dict[str, Any]]:
     sentences = _split_sentences(paragraph_text)
     rows: list[dict[str, Any]] = []
     for sentence_index, sentence in enumerate(sentences):
         occurrence_counts: dict[str, int] = {}
-        markers = _find_citation_markers(sentence.text, sentence.start, references)
+        markers = _find_citation_markers(
+            sentence.text,
+            sentence.start,
+            references,
+            use_bibliography=use_bibliography,
+        )
         for marker in markers:
             occurrence_index = occurrence_counts.get(marker.marker, 0)
             occurrence_counts[marker.marker] = occurrence_index + 1
-            status = _attribution_status(marker, references)
+            status = _attribution_status(
+                marker,
+                references,
+                use_bibliography=use_bibliography,
+            )
             for component_index, reference_key in enumerate(marker.reference_keys):
                 reference = references.get(reference_key)
                 marker_start_in_sentence = marker.start - sentence.start
@@ -227,6 +249,8 @@ def _find_citation_markers(
     sentence_text: str,
     sentence_start: int,
     references: dict[str, dict[str, Any]],
+    *,
+    use_bibliography: bool,
 ) -> list[CitationMarker]:
     markers: list[CitationMarker] = []
     occupied: list[tuple[int, int]] = []
@@ -236,6 +260,7 @@ def _find_citation_markers(
             sentence_text,
             sentence_start,
             references,
+            use_bibliography=use_bibliography,
         )
         markers.extend(narrative_markers)
         occupied.extend(
@@ -249,6 +274,8 @@ def _find_citation_markers(
                 continue
             marker = match.group(0)
             reference_keys, is_range = _parse_bracket_marker(marker)
+            if not use_bibliography:
+                reference_keys = _pre_resolution_reference_keys(marker, reference_keys)
             markers.append(
                 CitationMarker(
                     marker=marker,
@@ -271,6 +298,7 @@ def _find_citation_markers(
             reference_keys, unresolved_entries = _reference_keys_for_author_year_entries(
                 entries,
                 references,
+                use_bibliography=use_bibliography,
             )
             if reference_keys:
                 markers.append(
@@ -292,6 +320,8 @@ def _find_narrative_author_year_markers(
     sentence_text: str,
     sentence_start: int,
     references: dict[str, dict[str, Any]],
+    *,
+    use_bibliography: bool,
 ) -> list[CitationMarker]:
     markers: list[CitationMarker] = []
     for year_match in NARRATIVE_YEAR_PAREN_RE.finditer(sentence_text):
@@ -310,6 +340,7 @@ def _find_narrative_author_year_markers(
         reference_keys, unresolved_entries = _reference_keys_for_author_year_entries(
             entries,
             references,
+            use_bibliography=use_bibliography,
         )
         if reference_keys:
             markers.append(
@@ -368,12 +399,18 @@ def _author_year_entries(marker: str) -> list[str]:
 def _reference_keys_for_author_year_entries(
     entries: list[str],
     references: dict[str, dict[str, Any]],
+    *,
+    use_bibliography: bool,
 ) -> tuple[list[str], list[str]]:
     reference_keys: list[str] = []
     unresolved_entries: list[str] = []
     for entry in entries:
-        reference_key = _match_author_year_reference(entry, references)
-        if reference_key is None:
+        if use_bibliography:
+            reference_key = _match_author_year_reference(entry, references)
+            if reference_key is None:
+                reference_key = _unresolved_reference_key(entry)
+                unresolved_entries.append(entry)
+        else:
             reference_key = _unresolved_reference_key(entry)
             unresolved_entries.append(entry)
         reference_keys.append(reference_key)
@@ -430,11 +467,17 @@ def _reference_search_text(reference: dict[str, Any]) -> str:
 def _attribution_status(
     marker: CitationMarker,
     references: dict[str, dict[str, Any]],
+    *,
+    use_bibliography: bool,
 ) -> AttributionStatus:
     if marker.is_range:
         return AttributionStatus.CITATION_RANGE
     if len(marker.reference_keys) > 1:
         return AttributionStatus.MULTI_CITATION_GROUP
+    if not use_bibliography:
+        if marker.marker_type == "numeric":
+            return AttributionStatus.NUMERIC_UNRESOLVED_PRE_RESOLUTION
+        return AttributionStatus.AUTHOR_YEAR_UNRESOLVED_PRE_RESOLUTION
     if marker.unresolved_entries:
         return AttributionStatus.BIBLIOGRAPHY_UNRESOLVED
     if marker.reference_keys and marker.reference_keys[0] not in references:
@@ -557,6 +600,15 @@ def _reference_year(reference: dict[str, Any] | None) -> int | None:
 def _unresolved_reference_key(entry: str) -> str:
     digest = hashlib.sha256(entry.encode("utf-8")).hexdigest()[:12]
     return f"unresolved_{digest}"
+
+
+def _pre_resolution_reference_keys(marker: str, components: list[str]) -> list[str]:
+    keys = []
+    for index, component in enumerate(components):
+        payload = f"{marker}\x1f{index}\x1f{component}"
+        digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
+        keys.append(f"marker_component_{index}_{digest}")
+    return keys
 
 
 def _overlaps(start: int, end: int, occupied: list[tuple[int, int]]) -> bool:

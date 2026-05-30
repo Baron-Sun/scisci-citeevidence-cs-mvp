@@ -74,6 +74,7 @@ def test_single_citation(tmp_path: Path) -> None:
         references_path=references_path,
         out_path=out_path,
         max_window_chars=300,
+        use_bibliography=True,
     )
 
     assert list(contexts.columns) == CONTEXT_COLUMNS
@@ -103,6 +104,7 @@ def test_grouped_citation(tmp_path: Path) -> None:
         sections_path=sections_path,
         references_path=references_path,
         out_path=out_path,
+        use_bibliography=True,
     )
 
     assert len(contexts) == 2
@@ -128,6 +130,7 @@ def test_unresolved_citation(tmp_path: Path) -> None:
         sections_path=sections_path,
         references_path=references_path,
         out_path=out_path,
+        use_bibliography=True,
     )
 
     assert len(contexts) == 1
@@ -135,6 +138,39 @@ def test_unresolved_citation(tmp_path: Path) -> None:
     assert row["reference_key"] == "99"
     assert pd.isna(row["cited_title"])
     assert row["attribution_status"] == "bibliography_unresolved"
+
+
+def test_pre_resolution_extraction_without_references(tmp_path: Path) -> None:
+    sections_path, _, out_path = _write_inputs(
+        tmp_path,
+        sections=[
+            {
+                "paper_id": "p1",
+                "section_name": "Related Work",
+                "paragraph_id": "p1-para-pre",
+                "paragraph_text": (
+                    "We use a prior system [1]. Smith (2020) described the task. "
+                    "Other work is grouped (Smith, 2020; Jones, 2021)."
+                ),
+            }
+        ],
+    )
+
+    contexts = extract_citation_contexts(
+        sections_path=sections_path,
+        out_path=out_path,
+        max_window_chars=300,
+    )
+
+    assert len(contexts) == 4
+    assert contexts["cited_title"].isna().all()
+    numeric = contexts.loc[contexts["marker_type"].eq("numeric")].iloc[0]
+    author_year = contexts.loc[contexts["marker_type"].eq("narrative_author_year")].iloc[0]
+    grouped = contexts.loc[contexts["citation_group_size"].eq(2)]
+    assert str(numeric["reference_key"]).startswith("marker_component_0_")
+    assert numeric["attribution_status"] == "numeric_unresolved_pre_resolution"
+    assert author_year["attribution_status"] == "author_year_unresolved_pre_resolution"
+    assert set(grouped["attribution_status"]) == {"multi_citation_group"}
 
 
 def test_multiple_citations_in_one_paragraph(tmp_path: Path) -> None:
@@ -154,6 +190,7 @@ def test_multiple_citations_in_one_paragraph(tmp_path: Path) -> None:
         sections_path=sections_path,
         references_path=references_path,
         out_path=out_path,
+        use_bibliography=True,
     )
 
     assert len(contexts) == 2
@@ -178,11 +215,13 @@ def test_repeated_citation_to_same_reference(tmp_path: Path) -> None:
         sections_path=sections_path,
         references_path=references_path,
         out_path=out_path,
+        use_bibliography=True,
     )
     second = extract_citation_contexts(
         sections_path=sections_path,
         references_path=references_path,
         out_path=tmp_path / "citation_contexts_second.parquet",
+        use_bibliography=True,
     )
 
     assert len(first) == 2
@@ -209,6 +248,7 @@ def test_narrative_author_year_emits_single_marker(tmp_path: Path) -> None:
         sections_path=sections_path,
         references_path=references_path,
         out_path=out_path,
+        use_bibliography=True,
     )
 
     assert len(contexts) == 1
@@ -236,6 +276,7 @@ def test_et_al_narrative_author_year_marker(tmp_path: Path) -> None:
         sections_path=sections_path,
         references_path=references_path,
         out_path=out_path,
+        use_bibliography=True,
     )
 
     assert len(contexts) == 1
@@ -260,6 +301,7 @@ def test_parenthetical_author_year_still_emits(tmp_path: Path) -> None:
         sections_path=sections_path,
         references_path=references_path,
         out_path=out_path,
+        use_bibliography=True,
     )
 
     assert len(contexts) == 1
@@ -284,6 +326,7 @@ def test_repeated_identical_author_year_markers_have_unique_ids(tmp_path: Path) 
         sections_path=sections_path,
         references_path=references_path,
         out_path=out_path,
+        use_bibliography=True,
     )
 
     assert len(contexts) == 2
@@ -308,6 +351,7 @@ def test_narrative_author_detection_does_not_start_inside_word(tmp_path: Path) -
         sections_path=sections_path,
         references_path=references_path,
         out_path=out_path,
+        use_bibliography=True,
     )
 
     assert len(contexts) == 1
@@ -337,6 +381,7 @@ def test_contexts_extract_cli(tmp_path: Path) -> None:
             str(sections_path),
             "--references",
             str(references_path),
+            "--use-bibliography",
             "--out",
             str(out_path),
             "--max-window-chars",
@@ -347,3 +392,38 @@ def test_contexts_extract_cli(tmp_path: Path) -> None:
     assert result.exit_code == 0
     assert "Wrote 1 citation contexts" in result.stdout
     assert pd.read_parquet(out_path).shape == (1, len(CONTEXT_COLUMNS))
+
+
+def test_contexts_extract_sectioned_cli_without_references(tmp_path: Path) -> None:
+    sections_path, _, out_path = _write_inputs(
+        tmp_path,
+        sections=[
+            {
+                "paper_id": "p1",
+                "section_name": "Methods",
+                "paragraph_id": "p1-para-sectioned",
+                "paragraph_text": "We use the baseline method [1].",
+            }
+        ],
+    )
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        [
+            "contexts",
+            "extract-sectioned",
+            "--sections",
+            str(sections_path),
+            "--out",
+            str(out_path),
+            "--max-window-chars",
+            "300",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "pre-resolution citation contexts" in result.stdout
+    contexts = pd.read_parquet(out_path)
+    assert contexts.shape == (1, len(CONTEXT_COLUMNS))
+    assert contexts.iloc[0]["attribution_status"] == "numeric_unresolved_pre_resolution"

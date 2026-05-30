@@ -12,6 +12,7 @@ from citeevidence.acl.full_sections import (
     normalize_section_name,
     parse_full_sections_data,
 )
+from citeevidence.acl.section_normalization import normalize_sectioned_sections
 
 
 def test_normalize_section_variants() -> None:
@@ -19,6 +20,10 @@ def test_normalize_section_variants() -> None:
     assert normalize_section_name("Experiments and Results") == "experiment"
     assert normalize_section_name("Methodology") == "method"
     assert normalize_section_name("Evaluation") == "evaluation"
+    assert normalize_section_name("Data and Resources") == "dataset"
+    assert normalize_section_name("Error Analysis") == "error_analysis"
+    assert normalize_section_name("System Description") == "system_description"
+    assert normalize_section_name("Task Definition") == "task_definition"
 
 
 def test_parse_full_sections_like_pickle(tmp_path: Path) -> None:
@@ -105,3 +110,46 @@ def test_inspect_full_sections_missing_file_writes_clear_report(tmp_path: Path) 
     assert result.metrics["full_sections_exists"] is False
     assert "was not found" in report
     assert "inspection completed without crashing" in report
+
+
+def test_normalize_sectioned_sections_audit(tmp_path: Path) -> None:
+    input_path = tmp_path / "acl_sections_sectioned.parquet"
+    out_path = tmp_path / "acl_sections_sectioned_normalized.parquet"
+    report_path = tmp_path / "section_normalization_audit.md"
+    pd.DataFrame(
+        [
+            {
+                "paper_id": "P1",
+                "section_name": "Data and Resources",
+                "normalized_section": "unknown",
+                "section_index": 0,
+                "paragraph_id": "P1_s0000_p0000",
+                "paragraph_index": 0,
+                "paragraph_text": "Dataset paragraph.",
+            },
+            {
+                "paper_id": "P1",
+                "section_name": "Unusual Heading",
+                "normalized_section": "unknown",
+                "section_index": 1,
+                "paragraph_id": "P1_s0001_p0000",
+                "paragraph_index": 0,
+                "paragraph_text": "Unknown paragraph.",
+            },
+        ]
+    ).to_parquet(input_path, index=False)
+
+    metrics = normalize_sectioned_sections(
+        input_path=input_path,
+        out_path=out_path,
+        report_path=report_path,
+        top_n_unknown=5,
+    )
+    normalized = pd.read_parquet(out_path)
+    report = report_path.read_text(encoding="utf-8")
+
+    assert list(normalized.columns) == SECTIONED_COLUMNS
+    assert normalized["normalized_section"].tolist() == ["dataset", "unknown"]
+    assert metrics["unknown_rate_before"] == "1.000"
+    assert metrics["unknown_rate_after"] == "0.500"
+    assert "Top 5 Raw Section Names Mapped To Unknown" in report
