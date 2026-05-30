@@ -70,6 +70,25 @@ from citeevidence.contexts.resolve import (
 from citeevidence.datasets.multicite import load_multicite
 from citeevidence.datasets.normalize import write_labeled_contexts
 from citeevidence.datasets.scicite import load_scicite
+from citeevidence.llm_review import (
+    DEFAULT_ANALYSIS_READY_CONTEXTS_PATH as DEFAULT_LLM_REVIEW_CONTEXTS_PATH,
+)
+from citeevidence.llm_review import (
+    DEFAULT_CITED_TITLE_OBJECT_PROFILES_SAMPLE_PATH as DEFAULT_LLM_REVIEW_TITLE_PROFILES_PATH,
+)
+from citeevidence.llm_review import (
+    DEFAULT_LLM_OBJECT_REVIEW_JSONL_PATH,
+    DEFAULT_LLM_OBJECT_REVIEW_PARQUET_PATH,
+    DEFAULT_LLM_OBJECT_REVIEW_REPORT,
+    DEFAULT_LLM_OBJECT_REVIEW_SAMPLE_PATH,
+    run_llm_object_review,
+)
+from citeevidence.llm_review import (
+    DEFAULT_OBJECT_MENTIONS_SAMPLE_PATH as DEFAULT_LLM_REVIEW_OBJECT_MENTIONS_PATH,
+)
+from citeevidence.llm_review import (
+    DEFAULT_OBJECT_REGISTRY_PATH as DEFAULT_LLM_REVIEW_REGISTRY_PATH,
+)
 from citeevidence.objects import (
     DEFAULT_CITED_TITLE_OBJECT_PROFILES_SAMPLE_PATH,
     DEFAULT_OBJECT_MATCHING_SAMPLE_REPORT,
@@ -98,7 +117,10 @@ datasets_app = typer.Typer(
     no_args_is_help=True,
 )
 objects_app = typer.Typer(help="Match registered NLP objects in contexts.", no_args_is_help=True)
-review_app = typer.Typer(help="Ingest human review files.", no_args_is_help=True)
+review_app = typer.Typer(
+    help="Ingest review files and run model-based audits.",
+    no_args_is_help=True,
+)
 console = Console()
 error_console = Console(stderr=True)
 DEFAULT_PROJECT_CONFIG = Path("configs/project.yaml")
@@ -790,6 +812,94 @@ def ingest_resolution_review(
         f"reviewed={metrics['reviewed_rows']}, "
         f"unreviewed={metrics['unreviewed_rows']}. "
         f"Wrote {out}, {needs_check}, and {report}."
+    )
+
+
+@review_app.command("llm-objects")
+def review_llm_objects(
+    object_mentions: Annotated[
+        Path,
+        typer.Option("--object-mentions", help="Path to object mentions sample parquet."),
+    ] = DEFAULT_LLM_REVIEW_OBJECT_MENTIONS_PATH,
+    cited_title_profiles: Annotated[
+        Path,
+        typer.Option(
+            "--cited-title-profiles",
+            help="Path to cited-title object profile parquet.",
+        ),
+    ] = DEFAULT_LLM_REVIEW_TITLE_PROFILES_PATH,
+    contexts: Annotated[
+        Path,
+        typer.Option("--contexts", help="Path to analysis-ready strong contexts parquet."),
+    ] = DEFAULT_LLM_REVIEW_CONTEXTS_PATH,
+    registry: Annotated[
+        Path,
+        typer.Option("--registry", help="Path to object registry YAML."),
+    ] = DEFAULT_LLM_REVIEW_REGISTRY_PATH,
+    sample_out: Annotated[
+        Path,
+        typer.Option("--sample-out", help="Output LLM review sample CSV path."),
+    ] = DEFAULT_LLM_OBJECT_REVIEW_SAMPLE_PATH,
+    jsonl_out: Annotated[
+        Path,
+        typer.Option("--jsonl-out", help="Output LLM review JSONL results path."),
+    ] = DEFAULT_LLM_OBJECT_REVIEW_JSONL_PATH,
+    parquet_out: Annotated[
+        Path,
+        typer.Option("--parquet-out", help="Output LLM review parquet results path."),
+    ] = DEFAULT_LLM_OBJECT_REVIEW_PARQUET_PATH,
+    report: Annotated[
+        Path,
+        typer.Option("--report", help="Output LLM-as-judge review report path."),
+    ] = DEFAULT_LLM_OBJECT_REVIEW_REPORT,
+    limit: Annotated[
+        int,
+        typer.Option("--limit", min=1, help="Maximum sampled rows to review."),
+    ] = 200,
+    model: Annotated[
+        str | None,
+        typer.Option(
+            "--model",
+            help="OpenAI model name. Defaults to OPENAI_REVIEW_MODEL or project default.",
+        ),
+    ] = None,
+    seed: Annotated[
+        int,
+        typer.Option("--seed", help="Deterministic sampling seed."),
+    ] = 42,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Generate sample and prompts without API calls."),
+    ] = False,
+) -> None:
+    """Run an LLM-as-judge audit for extracted object mentions."""
+    try:
+        metrics = run_llm_object_review(
+            object_mentions_path=object_mentions,
+            cited_title_profiles_path=cited_title_profiles,
+            contexts_path=contexts,
+            registry_path=registry,
+            sample_out=sample_out,
+            jsonl_out=jsonl_out,
+            parquet_out=parquet_out,
+            report_path=report,
+            limit=limit,
+            model=model,
+            seed=seed,
+            dry_run=dry_run,
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        error_console.print(f"[red]Failed to run LLM object review:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    mode = "dry-run prompts" if dry_run else "model review rows"
+    completed_rows = (
+        metrics["dry_run_prompt_records"] if dry_run else metrics["reviewed_rows"]
+    )
+    console.print(
+        f"Prepared {metrics['sample_rows']} object mention review rows; "
+        f"{completed_rows} {mode}. "
+        f"Wrote {sample_out}, {jsonl_out}, {parquet_out}, and {report}."
     )
 
 

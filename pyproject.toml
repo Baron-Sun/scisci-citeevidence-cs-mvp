@@ -21,6 +21,7 @@ dependencies = [
     "beautifulsoup4",
     "rapidfuzz",
     "matplotlib",
+    "openai",
     "pytest",
     "ruff",
     "mypy",
