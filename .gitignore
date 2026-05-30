@@ -49,6 +49,7 @@ external/
 *.tar
 *.tar.gz
 *.tgz
+data/processed/*.csv
 
 # Local OS/editor files
 .DS_Store

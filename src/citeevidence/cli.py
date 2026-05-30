@@ -52,6 +52,14 @@ from citeevidence.contexts.extract import (
     extract_citation_contexts,
     write_context_extraction_report,
 )
+from citeevidence.contexts.final_audit import (
+    DEFAULT_ANALYSIS_READY_STRONG_CONTEXTS_PATH,
+    DEFAULT_FINAL_RESOLVED_AUDIT_REPORT,
+    DEFAULT_FINAL_RESOLVED_FLAGS_PATH,
+    DEFAULT_MANUAL_RESOLUTION_SAMPLE_PATH,
+    DEFAULT_STRONG_RESOLVED_SAMPLE_PATH,
+    audit_final_resolved_contexts,
+)
 from citeevidence.contexts.resolve import (
     DEFAULT_RESOLUTION_BASELINE_PATH,
     DEFAULT_RESOLUTION_FAILURES_PATH,
@@ -669,6 +677,57 @@ def resolve_markers(
     console.print(
         f"Processed {metrics['total_input_contexts']} contexts into {metrics['output_rows']} "
         f"resolved rows. Wrote {out}, {failures}, and {report}."
+    )
+
+
+@contexts_app.command("audit-final-resolved")
+def audit_final_resolved(
+    resolved: Annotated[
+        Path,
+        typer.Option("--resolved", help="Path to citation_contexts_resolved.parquet."),
+    ],
+    out: Annotated[
+        Path,
+        typer.Option("--out", help="Output final resolved audit markdown report path."),
+    ] = DEFAULT_FINAL_RESOLVED_AUDIT_REPORT,
+    flags: Annotated[
+        Path,
+        typer.Option("--flags", help="Output row-level final quality flags parquet path."),
+    ] = DEFAULT_FINAL_RESOLVED_FLAGS_PATH,
+    strong_sample: Annotated[
+        Path,
+        typer.Option("--strong-sample", help="Output strong resolved review sample CSV path."),
+    ] = DEFAULT_STRONG_RESOLVED_SAMPLE_PATH,
+    manual_sample: Annotated[
+        Path,
+        typer.Option("--manual-sample", help="Output mixed manual resolution review CSV path."),
+    ] = DEFAULT_MANUAL_RESOLUTION_SAMPLE_PATH,
+    analysis_ready: Annotated[
+        Path,
+        typer.Option(
+            "--analysis-ready",
+            help="Output analysis-ready strong contexts parquet path.",
+        ),
+    ] = DEFAULT_ANALYSIS_READY_STRONG_CONTEXTS_PATH,
+) -> None:
+    """Audit final resolved citation contexts and build analysis-ready strong rows."""
+    try:
+        metrics = audit_final_resolved_contexts(
+            resolved_path=resolved,
+            out_report=out,
+            flags_path=flags,
+            strong_sample_path=strong_sample,
+            manual_sample_path=manual_sample,
+            analysis_ready_path=analysis_ready,
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        error_console.print(f"[red]Failed to audit final resolved contexts:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    console.print(
+        f"Audited {metrics['total_rows']} resolved rows. "
+        f"Analysis-ready strong rows: {metrics['analysis_ready_rows']}. "
+        f"Wrote {out}, {flags}, {strong_sample}, {manual_sample}, and {analysis_ready}."
     )
 
 
