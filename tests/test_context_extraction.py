@@ -81,6 +81,7 @@ def test_single_citation(tmp_path: Path) -> None:
     row = contexts.iloc[0]
     assert row["reference_key"] == "1"
     assert row["cited_title"] == "Baseline Method"
+    assert row["marker_type"] == "numeric"
     assert row["citation_group_size"] == 1
     assert row["attribution_status"] == "single_citation_clear"
 
@@ -188,6 +189,129 @@ def test_repeated_citation_to_same_reference(tmp_path: Path) -> None:
     assert set(first["reference_key"]) == {"1"}
     assert first["context_id"].nunique() == 2
     assert first["context_id"].tolist() == second["context_id"].tolist()
+
+
+def test_narrative_author_year_emits_single_marker(tmp_path: Path) -> None:
+    sentence = "Elsner and Charniak (2010) described conversation disentanglement."
+    sections_path, references_path, out_path = _write_inputs(
+        tmp_path,
+        sections=[
+            {
+                "paper_id": "p1",
+                "section_name": "Related Work",
+                "paragraph_id": "p1-para-7",
+                "paragraph_text": sentence,
+            }
+        ],
+    )
+
+    contexts = extract_citation_contexts(
+        sections_path=sections_path,
+        references_path=references_path,
+        out_path=out_path,
+    )
+
+    assert len(contexts) == 1
+    row = contexts.iloc[0]
+    assert row["citation_marker"] == "Elsner and Charniak (2010)"
+    assert row["marker_type"] == "narrative_author_year"
+    assert row["marker_start_offset"] == sentence.index("Elsner")
+    assert row["marker_end_offset"] == sentence.index(")") + 1
+
+
+def test_et_al_narrative_author_year_marker(tmp_path: Path) -> None:
+    sections_path, references_path, out_path = _write_inputs(
+        tmp_path,
+        sections=[
+            {
+                "paper_id": "p1",
+                "section_name": "Related Work",
+                "paragraph_id": "p1-para-8",
+                "paragraph_text": "Hatzivassiloglou et al. (1999) proposed a method.",
+            }
+        ],
+    )
+
+    contexts = extract_citation_contexts(
+        sections_path=sections_path,
+        references_path=references_path,
+        out_path=out_path,
+    )
+
+    assert len(contexts) == 1
+    assert contexts.iloc[0]["citation_marker"] == "Hatzivassiloglou et al. (1999)"
+    assert contexts.iloc[0]["marker_type"] == "narrative_author_year"
+
+
+def test_parenthetical_author_year_still_emits(tmp_path: Path) -> None:
+    sections_path, references_path, out_path = _write_inputs(
+        tmp_path,
+        sections=[
+            {
+                "paper_id": "p1",
+                "section_name": "Related Work",
+                "paragraph_id": "p1-para-9",
+                "paragraph_text": "This approach is common (Rosario and Hearst, 2001).",
+            }
+        ],
+    )
+
+    contexts = extract_citation_contexts(
+        sections_path=sections_path,
+        references_path=references_path,
+        out_path=out_path,
+    )
+
+    assert len(contexts) == 1
+    assert contexts.iloc[0]["citation_marker"] == "(Rosario and Hearst, 2001)"
+    assert contexts.iloc[0]["marker_type"] == "parenthetical_author_year"
+
+
+def test_repeated_identical_author_year_markers_have_unique_ids(tmp_path: Path) -> None:
+    sections_path, references_path, out_path = _write_inputs(
+        tmp_path,
+        sections=[
+            {
+                "paper_id": "p1",
+                "section_name": "Related Work",
+                "paragraph_id": "p1-para-10",
+                "paragraph_text": "Smith (2020) introduced it. Smith (2020) extended it.",
+            }
+        ],
+    )
+
+    contexts = extract_citation_contexts(
+        sections_path=sections_path,
+        references_path=references_path,
+        out_path=out_path,
+    )
+
+    assert len(contexts) == 2
+    assert contexts["citation_marker"].tolist() == ["Smith (2020)", "Smith (2020)"]
+    assert contexts["context_id"].nunique() == 2
+
+
+def test_narrative_author_detection_does_not_start_inside_word(tmp_path: Path) -> None:
+    sections_path, references_path, out_path = _write_inputs(
+        tmp_path,
+        sections=[
+            {
+                "paper_id": "p1",
+                "section_name": "Methods",
+                "paragraph_id": "p1-para-11",
+                "paragraph_text": "Other measures include Levenshtein (1966).",
+            }
+        ],
+    )
+
+    contexts = extract_citation_contexts(
+        sections_path=sections_path,
+        references_path=references_path,
+        out_path=out_path,
+    )
+
+    assert len(contexts) == 1
+    assert contexts.iloc[0]["citation_marker"] == "Levenshtein (1966)"
 
 
 def test_contexts_extract_cli(tmp_path: Path) -> None:

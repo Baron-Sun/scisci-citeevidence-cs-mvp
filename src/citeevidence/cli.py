@@ -25,6 +25,7 @@ from citeevidence.config import ConfigLoadError, load_project_config
 from citeevidence.contexts.audit import DEFAULT_CONTEXT_FLAGS_PATH, audit_citation_contexts
 from citeevidence.contexts.extract import extract_citation_contexts
 from citeevidence.contexts.resolve import (
+    DEFAULT_RESOLUTION_BASELINE_PATH,
     DEFAULT_RESOLUTION_FAILURES_PATH,
     DEFAULT_RESOLUTION_REPORT_PATH,
     DEFAULT_RESOLVED_PILOT_PATH,
@@ -358,6 +359,13 @@ def resolve_markers(
         Path,
         typer.Option("--report", help="Output marker resolution pilot report path."),
     ] = DEFAULT_RESOLUTION_REPORT_PATH,
+    baseline_metrics: Annotated[
+        Path | None,
+        typer.Option(
+            "--baseline-metrics",
+            help="Optional JSON metrics file to use as the before snapshot.",
+        ),
+    ] = DEFAULT_RESOLUTION_BASELINE_PATH,
     limit: Annotated[
         int,
         typer.Option("--limit", min=1, help="Maximum contexts to process for the pilot."),
@@ -376,6 +384,7 @@ def resolve_markers(
             out_path=out,
             failures_path=failures,
             report_path=report,
+            baseline_metrics_path=baseline_metrics,
             limit=limit,
             sample=sample,
         )

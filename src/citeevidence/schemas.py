@@ -25,6 +25,15 @@ class AttributionStatus(StrEnum):
     PARSER_ERROR = "parser_error"
 
 
+class MarkerType(StrEnum):
+    NUMERIC = "numeric"
+    PARENTHETICAL_AUTHOR_YEAR = "parenthetical_author_year"
+    NARRATIVE_AUTHOR_YEAR = "narrative_author_year"
+    YEAR_ONLY = "year_only"
+    MALFORMED = "malformed"
+    UNKNOWN = "unknown"
+
+
 class Intent(StrEnum):
     BACKGROUND = "background"
     USES = "uses"
@@ -108,11 +117,22 @@ class CitationContext(BaseRecord):
     section: NonEmptyStr | None = None
     paragraph_id: NonEmptyStr
     citation_marker: NonEmptyStr
+    marker_start_offset: int | None = Field(default=None, ge=0)
+    marker_end_offset: int | None = Field(default=None, ge=0)
+    marker_type: MarkerType | None = None
     sentence_text: NonEmptyStr
     context_window_s3: NonEmptyStr
     context_window_paragraph: NonEmptyStr
     citation_group_size: int = Field(ge=1)
     attribution_status: AttributionStatus
+
+    @model_validator(mode="after")
+    def validate_marker_offsets(self) -> Self:
+        if self.marker_start_offset is None or self.marker_end_offset is None:
+            return self
+        if self.marker_end_offset <= self.marker_start_offset:
+            raise ValueError("marker_end_offset must be greater than marker_start_offset")
+        return self
 
     def contains_span(self, span: str) -> bool:
         return _span_in_context(span, self.context_window_s3, self.context_window_paragraph)
@@ -366,6 +386,7 @@ __all__ = [
     "EvidenceValidationError",
     "HumanValidationRecord",
     "Intent",
+    "MarkerType",
     "MethodEdgeType",
     "ObjectMention",
     "ObjectRegistryEntry",

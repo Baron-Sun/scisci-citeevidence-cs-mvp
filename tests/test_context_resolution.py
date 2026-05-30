@@ -7,7 +7,12 @@ from typer.testing import CliRunner
 
 from citeevidence.cli import app
 from citeevidence.contexts.extract import CONTEXT_COLUMNS
-from citeevidence.contexts.resolve import OUTPUT_COLUMNS, resolve_citation_markers_pilot
+from citeevidence.contexts.resolve import (
+    OUTPUT_COLUMNS,
+    _candidate_surnames,
+    parse_citation_marker,
+    resolve_citation_markers_pilot,
+)
 
 
 def _context_row(context_id: str, citing_paper_id: str, marker: str) -> dict[str, object]:
@@ -147,6 +152,7 @@ def test_resolve_citation_markers_pilot_rules(tmp_path: Path) -> None:
     assert metrics["duplicate_context_id_after"] == 0
     assert _status_for(resolved, "ctx_vinyals") == "author_year_clear"
     assert _status_for(resolved, "ctx_elsner") == "author_year_clear"
+    assert _row_for(resolved, "ctx_elsner")["parsed_surnames"] == "elsner;charniak"
     assert _status_for(resolved, "ctx_year_unique") == "year_only_unique_candidate"
     assert _row_for(resolved, "ctx_year_unique")["resolution_confidence"] <= 0.60
     assert _status_for(resolved, "ctx_year_amb") == "ambiguous_year_only"
@@ -163,6 +169,76 @@ def test_resolve_citation_markers_pilot_rules(tmp_path: Path) -> None:
     }
     assert pd.read_parquet(failures_path)["resolution_status"].ne("author_year_clear").all()
     assert "resolved_cited_title non-empty rate" in report
+    assert "## Before / After Comparison" in report
+
+
+def test_author_year_surname_parsing() -> None:
+    elsner = parse_citation_marker("Elsner and Charniak, 2010")[0]
+    tratz = parse_citation_marker("Tratz and Hovy, 2010")[0]
+    radziszewski = parse_citation_marker("Radziszewski and Pawlaczek, 2012")[0]
+    hatzivassiloglou = parse_citation_marker("Hatzivassiloglou et al., 1999")[0]
+    de_marneffe = parse_citation_marker("de Marneffe et al., 2006")[0]
+
+    assert elsner.surnames == ["elsner", "charniak"]
+    assert tratz.surnames == ["tratz", "hovy"]
+    assert radziszewski.surnames == ["radziszewski", "pawlaczek"]
+    assert hatzivassiloglou.surnames == ["hatzivassiloglou"]
+    assert hatzivassiloglou.is_et_al
+    assert de_marneffe.surnames == ["de marneffe"]
+
+
+def test_candidate_author_surname_parsing() -> None:
+    assert _candidate_surnames("Chen, Keh-Jiann and You, Jia-Ming") == ["chen", "you"]
+    assert _candidate_surnames("de Marneffe, Marie-Catherine") == ["de marneffe"]
+    assert _candidate_surnames("van der Plas, Lonneke") == ["van der plas"]
+
+
+def test_year_suffix_parsing() -> None:
+    component = parse_citation_marker("(Smith, 2007b)")[0]
+
+    assert component.year == "2007"
+    assert component.year_suffix == "b"
+    assert component.surnames == ["smith"]
+
+
+def test_year_only_repair_from_left_author_context() -> None:
+    sentence = "In NLP, Elsner and Charniak (2010) described the task."
+    component = parse_citation_marker(
+        "(2010)",
+        marker_type="year_only",
+        sentence_text=sentence,
+        marker_start_offset=sentence.index("(2010)"),
+    )[0]
+
+    assert component.surnames == ["elsner", "charniak"]
+    assert component.year == "2010"
+    assert not component.is_year_only
+    assert component.repaired_from_year_only
+
+
+def test_year_only_false_positive_is_not_repaired() -> None:
+    sentence = "The trend increased in the year (2010) across systems."
+    component = parse_citation_marker(
+        "(2010)",
+        marker_type="year_only",
+        sentence_text=sentence,
+        marker_start_offset=sentence.index("(2010)"),
+    )[0]
+
+    assert component.surnames == []
+    assert component.is_year_only
+
+
+def test_year_only_repair_does_not_start_particle_inside_word() -> None:
+    sentence = "Other measures include Levenshtein (1966)."
+    component = parse_citation_marker(
+        "(1966)",
+        marker_type="year_only",
+        sentence_text=sentence,
+        marker_start_offset=sentence.index("(1966)"),
+    )[0]
+
+    assert component.surnames == ["levenshtein"]
 
 
 def test_resolve_markers_cli(tmp_path: Path) -> None:

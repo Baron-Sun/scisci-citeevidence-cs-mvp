@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -19,6 +20,9 @@ DEFAULT_RESOLUTION_FAILURES_PATH = Path(
     "data/processed/citation_marker_resolution_pilot_failures.parquet"
 )
 DEFAULT_RESOLUTION_REPORT_PATH = Path("reports/citation_marker_resolution_pilot_report.md")
+DEFAULT_RESOLUTION_BASELINE_PATH = Path(
+    "reports/citation_marker_resolution_pilot_baseline.json"
+)
 
 RESOLUTION_COLUMNS = [
     "source_context_id",
@@ -26,6 +30,7 @@ RESOLUTION_COLUMNS = [
     "marker_component_text",
     "parsed_surnames",
     "parsed_year",
+    "parsed_year_suffix",
     "candidate_count_for_citing_paper",
     "matched_candidate_count",
     "matched_candidate_acl_ids",
@@ -49,9 +54,40 @@ GRAPH_READ_COLUMNS = [
     "cited_authors",
     "cited_doi",
 ]
-YEAR_RE = re.compile(r"\b((?:19|20)\d{2})[a-z]?\b", re.IGNORECASE)
+YEAR_RE = re.compile(r"\b((?:19|20)\d{2})([a-z])?\b", re.IGNORECASE)
 NUMERIC_BRACKET_RE = re.compile(r"\[\s*\d+\s*(?:(?:[,;]\s*\d+)|(?:[-–—]\s*\d+))*\s*\]")
-FILLER_RE = re.compile(r"\b(?:see|cf|e\.g|e\.g\.|eg|also|and|or|in)\b", re.IGNORECASE)
+LEADING_CUE_RE = re.compile(
+    r"^\s*(?:(?:see|cf|e\.g\.?|eg|also)\s+)+",
+    re.IGNORECASE,
+)
+YEAR_ONLY_MARKER_RE = re.compile(r"^\(?\s*(?:19|20)\d{2}[a-z]?\s*\)?$", re.IGNORECASE)
+CAPITALIZED_SURNAME_RE = r"[A-Z][a-z][A-Za-z'`-]*"
+PARTICLE_SURNAME_RE = (
+    r"(?:de|del|da|di|le|la|von)\s+[A-Z][A-Za-z'`-]*"
+    r"|(?:de\s+la|van\s+der|van|del)\s+[A-Z][A-Za-z'`-]*"
+)
+SURNAME_TOKEN_RE = rf"(?:{CAPITALIZED_SURNAME_RE}|{PARTICLE_SURNAME_RE})"
+LEFT_AUTHOR_PHRASE_RE = re.compile(
+    rf"(?<![A-Za-z])(?P<authors>{SURNAME_TOKEN_RE}"
+    rf"(?:\s+(?:and|&)\s+{SURNAME_TOKEN_RE})?"
+    r"(?:\s+et\s+al\.?)?)\s*$"
+)
+TRAILING_NON_AUTHOR_RE = re.compile(
+    r"\b(?:year|years|system|systems|between|from|to|in|during|since|until)\s*$",
+    re.IGNORECASE,
+)
+PARTICLE_SEQUENCES = (
+    ("de", "la"),
+    ("van", "der"),
+    ("de",),
+    ("del",),
+    ("van",),
+    ("von",),
+    ("da",),
+    ("di",),
+    ("le",),
+    ("la",),
+)
 
 
 @dataclass(frozen=True)
@@ -59,9 +95,11 @@ class MarkerComponent:
     text: str
     surnames: list[str]
     year: str | None
+    year_suffix: str | None = None
     is_numeric: bool = False
     is_year_only: bool = False
     is_et_al: bool = False
+    repaired_from_year_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -83,6 +121,7 @@ def resolve_citation_markers_pilot(
     out_path: str | Path = DEFAULT_RESOLVED_PILOT_PATH,
     failures_path: str | Path = DEFAULT_RESOLUTION_FAILURES_PATH,
     report_path: str | Path = DEFAULT_RESOLUTION_REPORT_PATH,
+    baseline_metrics_path: str | Path | None = DEFAULT_RESOLUTION_BASELINE_PATH,
     limit: int = 100_000,
     sample: bool = False,
     random_seed: int = 13,
@@ -99,6 +138,10 @@ def resolve_citation_markers_pilot(
     contexts = _ensure_columns(contexts, CONTEXT_COLUMNS)
     duplicate_before = int(len(contexts) - contexts["context_id"].nunique(dropna=True))
 
+    output = Path(out_path)
+    baseline_resolution = _load_baseline_resolution_snapshot(baseline_metrics_path)
+    if baseline_resolution is None:
+        baseline_resolution = _existing_resolution_snapshot(output)
     candidate_index = _load_candidate_index(
         Path(aligned_graph_path),
         citing_paper_ids=set(contexts["citing_paper_id"].dropna().astype(str)),
@@ -106,7 +149,6 @@ def resolve_citation_markers_pilot(
     resolved = _resolve_contexts(contexts, candidate_index)
     duplicate_after = int(len(resolved) - resolved["context_id"].nunique(dropna=True))
 
-    output = Path(out_path)
     output.parent.mkdir(parents=True, exist_ok=True)
     resolved.to_parquet(output, index=False)
 
@@ -122,6 +164,7 @@ def resolve_citation_markers_pilot(
         duplicate_before=duplicate_before,
         duplicate_after=duplicate_after,
         candidate_index=candidate_index,
+        baseline_resolution=baseline_resolution,
     )
     report = build_resolution_report(
         metrics,
@@ -139,7 +182,13 @@ def resolve_citation_markers_pilot(
     return metrics
 
 
-def parse_citation_marker(marker: Any) -> list[MarkerComponent]:
+def parse_citation_marker(
+    marker: Any,
+    *,
+    marker_type: Any = None,
+    sentence_text: Any = None,
+    marker_start_offset: Any = None,
+) -> list[MarkerComponent]:
     """Parse a citation marker into numeric or author-year components."""
     text = _clean_text(marker)
     if not text:
@@ -155,6 +204,7 @@ def parse_citation_marker(marker: Any) -> list[MarkerComponent]:
             components.append(MarkerComponent(text=raw_component, surnames=[], year=None))
             continue
         year = year_match.group(1)
+        year_suffix = year_match.group(2).lower() if year_match.group(2) else None
         before_year = raw_component[: year_match.start()]
         is_et_al = bool(re.search(r"\bet\s+al\.?\b", before_year, flags=re.IGNORECASE))
         surnames = _parsed_surnames(before_year)
@@ -164,13 +214,74 @@ def parse_citation_marker(marker: Any) -> list[MarkerComponent]:
                 text=raw_component,
                 surnames=surnames,
                 year=year,
+                year_suffix=year_suffix,
                 is_year_only=is_year_only,
                 is_et_al=is_et_al,
             )
         )
     if not components:
         return [MarkerComponent(text=text, surnames=[], year=None)]
-    return components
+    return _repair_year_only_components(
+        components,
+        marker_text=text,
+        marker_type=_clean_text_or_none(marker_type),
+        sentence_text=_clean_text_or_none(sentence_text),
+        marker_start_offset=_optional_int(marker_start_offset),
+    )
+
+
+def _repair_year_only_components(
+    components: list[MarkerComponent],
+    *,
+    marker_text: str,
+    marker_type: str | None,
+    sentence_text: str | None,
+    marker_start_offset: int | None,
+) -> list[MarkerComponent]:
+    if len(components) != 1:
+        return components
+    component = components[0]
+    if not component.is_year_only or component.year is None:
+        return components
+    is_year_only_marker = marker_type == "year_only" or bool(
+        YEAR_ONLY_MARKER_RE.fullmatch(marker_text)
+    )
+    if not is_year_only_marker or sentence_text is None or marker_start_offset is None:
+        return components
+    if marker_start_offset < 0 or marker_start_offset > len(sentence_text):
+        return components
+
+    left_context = sentence_text[max(0, marker_start_offset - 80) : marker_start_offset]
+    authors = _plausible_left_author_phrase(left_context)
+    if authors is None:
+        return components
+    surnames = _parsed_surnames(authors)
+    if not surnames:
+        return components
+    return [
+        MarkerComponent(
+            text=f"{authors}, {component.year}{component.year_suffix or ''}",
+            surnames=surnames,
+            year=component.year,
+            year_suffix=component.year_suffix,
+            is_year_only=False,
+            is_et_al=bool(re.search(r"\bet\s+al\.?\b", authors, flags=re.IGNORECASE)),
+            repaired_from_year_only=True,
+        )
+    ]
+
+
+def _plausible_left_author_phrase(left_context: str) -> str | None:
+    left = left_context.rstrip()
+    if not left or TRAILING_NON_AUTHOR_RE.search(left):
+        return None
+    match = LEFT_AUTHOR_PHRASE_RE.search(left)
+    if match is None:
+        return None
+    authors = match.group("authors").strip()
+    if not authors or authors.lower() in {"in", "from", "between", "to"}:
+        return None
+    return authors
 
 
 def build_resolution_report(
@@ -247,6 +358,9 @@ def build_resolution_report(
         "",
         "## Resolution Status Distribution",
         _table(metrics["resolution_status_distribution"]),
+        "",
+        "## Before / After Comparison",
+        _table(metrics["before_after_comparison"]),
         "",
         "## 20 Examples: author_year_clear",
         _table(metrics["samples"]["author_year_clear"]),
@@ -329,7 +443,12 @@ def _resolve_contexts(
     for row_number, row in enumerate(contexts.to_dict(orient="records")):
         source_context_id = _clean_text(row.get("context_id"))
         citing_paper_id = _clean_text(row.get("citing_paper_id"))
-        components = parse_citation_marker(row.get("citation_marker"))
+        components = parse_citation_marker(
+            row.get("citation_marker"),
+            marker_type=row.get("marker_type"),
+            sentence_text=row.get("sentence_text"),
+            marker_start_offset=row.get("marker_start_offset"),
+        )
         candidates = candidate_index.get(citing_paper_id, [])
         for component_index, component in enumerate(components):
             resolved_fields = _resolve_component(component, candidates)
@@ -340,6 +459,7 @@ def _resolve_contexts(
             output_row["marker_component_text"] = component.text
             output_row["parsed_surnames"] = ";".join(component.surnames)
             output_row["parsed_year"] = component.year
+            output_row["parsed_year_suffix"] = component.year_suffix
             output_row["candidate_count_for_citing_paper"] = len(candidates)
             output_row["context_id"] = _resolved_context_id(
                 source_context_id=source_context_id,
@@ -488,6 +608,7 @@ def _build_metrics(
     duplicate_before: int,
     duplicate_after: int,
     candidate_index: dict[str, list[CandidatePaper]],
+    baseline_resolution: dict[str, Any] | None,
 ) -> dict[str, Any]:
     total_context_ids = set(contexts["citing_paper_id"].dropna().astype(str))
     covered_context_ids = total_context_ids & set(candidate_index)
@@ -518,6 +639,10 @@ def _build_metrics(
             int(resolved["resolved_cited_title"].map(_clean_text_or_none).notna().sum()),
             output_rows,
         ),
+        "before_after_comparison": _before_after_comparison(
+            baseline_resolution,
+            _resolution_snapshot(resolved, duplicate_after=duplicate_after),
+        ),
         "samples": {
             "author_year_clear": _sample_status(resolved, "author_year_clear", 20),
             "multi_candidate_ambiguous": _sample_status(
@@ -536,6 +661,96 @@ def _sample_status(frame: pd.DataFrame, status: str, limit: int) -> list[dict[st
     return _sample_rows(frame.loc[frame["resolution_status"].eq(status)], limit)
 
 
+def _existing_resolution_snapshot(path: Path) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    try:
+        frame = pd.read_parquet(path)
+    except (OSError, ValueError, pa.ArrowInvalid):
+        return None
+    if "resolution_status" not in frame:
+        return None
+    duplicate_after = (
+        int(len(frame) - frame["context_id"].nunique(dropna=True))
+        if "context_id" in frame
+        else None
+    )
+    return _resolution_snapshot(frame, duplicate_after=duplicate_after)
+
+
+def _load_baseline_resolution_snapshot(path: str | Path | None) -> dict[str, Any] | None:
+    if path is None:
+        return None
+    baseline_path = Path(path)
+    if not baseline_path.exists():
+        return None
+    try:
+        data = json.loads(baseline_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    required = {
+        "output_rows",
+        "author_year_clear_rate",
+        "ambiguous_year_only_count",
+        "year_only_unique_candidate_count",
+        "bibliography_unresolved_count",
+        "duplicate_context_id_count",
+    }
+    if not required <= set(data):
+        return None
+    return {key: data.get(key) for key in required}
+
+
+def _resolution_snapshot(
+    frame: pd.DataFrame,
+    *,
+    duplicate_after: int | None,
+) -> dict[str, Any]:
+    statuses = (
+        frame["resolution_status"].fillna("unavailable").astype(str)
+        if "resolution_status" in frame
+        else pd.Series([], dtype=str)
+    )
+    total = int(len(frame))
+    status_counts = statuses.value_counts().to_dict()
+    return {
+        "output_rows": total,
+        "author_year_clear_rate": _rate(
+            int(statuses.eq("author_year_clear").sum()),
+            total,
+        ),
+        "ambiguous_year_only_count": int(status_counts.get("ambiguous_year_only", 0)),
+        "year_only_unique_candidate_count": int(
+            status_counts.get("year_only_unique_candidate", 0)
+        ),
+        "bibliography_unresolved_count": int(status_counts.get("bibliography_unresolved", 0)),
+        "duplicate_context_id_count": duplicate_after,
+    }
+
+
+def _before_after_comparison(
+    before: dict[str, Any] | None,
+    after: dict[str, Any],
+) -> list[dict[str, Any]]:
+    rows = []
+    for metric in (
+        "output_rows",
+        "author_year_clear_rate",
+        "ambiguous_year_only_count",
+        "year_only_unique_candidate_count",
+        "bibliography_unresolved_count",
+        "duplicate_context_id_count",
+    ):
+        rows.append(
+            {
+                "metric": metric,
+                "before": before.get(metric) if before is not None else None,
+                "after": after.get(metric),
+            }
+        )
+    return rows
+
+
 def _sample_unresolved(frame: pd.DataFrame, limit: int) -> list[dict[str, Any]]:
     unresolved_statuses = [
         "bibliography_unresolved",
@@ -552,9 +767,11 @@ def _sample_rows(frame: pd.DataFrame, limit: int) -> list[dict[str, Any]]:
         "source_context_id",
         "citing_paper_id",
         "citation_marker",
+        "marker_type",
         "marker_component_text",
         "parsed_surnames",
         "parsed_year",
+        "parsed_year_suffix",
         "resolved_cited_acl_id",
         "resolved_cited_title",
         "matched_candidate_count",
@@ -587,10 +804,11 @@ def _status_rate(frame: pd.DataFrame, status: str) -> str:
 
 def _parsed_surnames(text: str) -> list[str]:
     cleaned = re.sub(r"\bet\s+al\.?\b", " ", text, flags=re.IGNORECASE)
-    cleaned = FILLER_RE.sub(" ", cleaned)
+    cleaned = LEADING_CUE_RE.sub("", cleaned)
     cleaned = cleaned.replace("&", " and ")
     cleaned = re.sub(r"\([^)]*\)", " ", cleaned)
-    pieces = re.split(r"\band\b|,", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r",\s*$", " ", cleaned)
+    pieces = re.split(r"\s+(?:and)\s+|;", cleaned, flags=re.IGNORECASE)
     surnames = []
     for piece in pieces:
         surname = _normalize_name(piece)
@@ -604,10 +822,10 @@ def _candidate_surnames(authors: Any) -> list[str]:
     if text is None:
         return []
     text = text.replace("\n", " ")
-    pieces = re.split(r"\s+and\s+", text)
+    pieces = re.split(r"\s+and\s+|;", text)
     surnames = []
     for piece in pieces:
-        surname_source = piece.split(",", maxsplit=1)[0] if "," in piece else piece.split()[0]
+        surname_source = piece.split(",", maxsplit=1)[0] if "," in piece else piece
         surname = _normalize_name(surname_source)
         if surname and surname not in surnames:
             surnames.append(surname)
@@ -625,7 +843,26 @@ def _normalize_name(text: Any) -> str | None:
     value = re.sub(r"[-\s]+", " ", value).strip().lower()
     if not value:
         return None
-    return value.split()[0]
+    words = value.split()
+    particle_at_start = _particle_surname(words, start_only=True)
+    if particle_at_start is not None:
+        return particle_at_start
+    particle_anywhere = _particle_surname(words, start_only=False)
+    if particle_anywhere is not None:
+        return particle_anywhere
+    return words[-1]
+
+
+def _particle_surname(words: list[str], *, start_only: bool) -> str | None:
+    if not words:
+        return None
+    starts = [0] if start_only else range(len(words))
+    for start in starts:
+        for particle in PARTICLE_SEQUENCES:
+            end = start + len(particle)
+            if tuple(words[start:end]) == particle and end < len(words):
+                return " ".join([*particle, words[end]])
+    return None
 
 
 def _strip_outer_parens(text: str) -> str:
@@ -671,6 +908,15 @@ def _year_string(value: Any) -> str | None:
 
 
 def _int_or_none(value: Any) -> int | None:
+    if value is None or pd.isna(value):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _optional_int(value: Any) -> int | None:
     if value is None or pd.isna(value):
         return None
     try:
