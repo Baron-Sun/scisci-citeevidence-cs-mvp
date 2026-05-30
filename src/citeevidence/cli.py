@@ -14,6 +14,16 @@ from citeevidence.acl.aligned_graph import (
     DEFAULT_CROSSWALK_PATH,
     build_aligned_acl_citation_graph,
 )
+from citeevidence.acl.full_citations_coverage import (
+    DEFAULT_CONTEXTS_PATH,
+    DEFAULT_FULL_CITATIONS_COVERAGE_REPORT,
+    DEFAULT_FULL_CITATIONS_SAFE_ALIGNED_PATH,
+    DEFAULT_ONLYGRAPH_ALIGNED_PATH,
+    evaluate_full_citations_candidate_coverage,
+)
+from citeevidence.acl.full_citations_coverage import (
+    DEFAULT_RESOLVED_PILOT_PATH as DEFAULT_FULL_CITATIONS_RESOLVED_PILOT_PATH,
+)
 from citeevidence.acl.full_sections import (
     DEFAULT_FULL_SECTIONS_PARSE_REPORT,
     DEFAULT_FULL_SECTIONS_STRUCTURE_REPORT,
@@ -313,6 +323,61 @@ def build_aligned_graph(
         f"Wrote {metrics['acl_id_crosswalk_rows']} crosswalk rows to {out_crosswalk}, "
         f"{metrics['aligned_graph_edges']} aligned graph edges to {out_graph}, and report "
         f"to {report}."
+    )
+
+
+@acl_app.command("evaluate-full-citations")
+def evaluate_full_citations(
+    full_citations: Annotated[
+        Path,
+        typer.Option("--full-citations", help="Path to acl_full_citations.parquet."),
+    ],
+    publication_info: Annotated[
+        Path,
+        typer.Option("--publication-info", help="Path to ACL-OCL publication metadata."),
+    ],
+    onlygraph_aligned: Annotated[
+        Path,
+        typer.Option("--onlygraph-aligned", help="Path to aligned onlygraph parquet."),
+    ] = DEFAULT_ONLYGRAPH_ALIGNED_PATH,
+    resolved: Annotated[
+        Path,
+        typer.Option("--resolved", help="Path to citation_contexts_resolved_pilot.parquet."),
+    ] = DEFAULT_FULL_CITATIONS_RESOLVED_PILOT_PATH,
+    contexts: Annotated[
+        Path,
+        typer.Option("--contexts", help="Path to citation_contexts.parquet."),
+    ] = DEFAULT_CONTEXTS_PATH,
+    out_safe: Annotated[
+        Path,
+        typer.Option("--out-safe", help="Output safe aligned full-citations parquet path."),
+    ] = DEFAULT_FULL_CITATIONS_SAFE_ALIGNED_PATH,
+    report: Annotated[
+        Path,
+        typer.Option("--report", help="Output coverage report markdown path."),
+    ] = DEFAULT_FULL_CITATIONS_COVERAGE_REPORT,
+) -> None:
+    """Evaluate safe acl_full_citations candidates without changing resolution."""
+    try:
+        result = evaluate_full_citations_candidate_coverage(
+            full_citations_path=full_citations,
+            publication_info_path=publication_info,
+            onlygraph_aligned_path=onlygraph_aligned,
+            resolved_pilot_path=resolved,
+            contexts_path=contexts,
+            out_safe_aligned=out_safe,
+            report_path=report,
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        error_console.print(f"[red]Failed to evaluate full citations:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    coverage = result.metrics["unresolved_author_year_coverage"]
+    console.print(
+        f"Wrote {len(result.safe_full_citations)} safe aligned full-citation rows to "
+        f"{out_safe}. Report: {report}. "
+        f"Recovered surname candidates for "
+        f"{coverage['gain_same_year_surname_candidate_rows']} unresolved rows."
     )
 
 
