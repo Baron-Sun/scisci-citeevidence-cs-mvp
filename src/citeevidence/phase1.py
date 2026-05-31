@@ -19,9 +19,18 @@ DEFAULT_PHASE1_CITED_TITLE_PROFILES_PATH = Path(
 DEFAULT_PHASE1_CANDIDATES_PILOT_PATH = Path(
     "data/processed/phase1_citation_function_candidates_pilot.parquet"
 )
+DEFAULT_PHASE1_CANDIDATES_PILOT_REFINED_PATH = Path(
+    "data/processed/phase1_citation_function_candidates_pilot_refined.parquet"
+)
 DEFAULT_PHASE1_FEATURES_PILOT_PATH = Path("data/processed/phase1_context_features_pilot.parquet")
+DEFAULT_PHASE1_FEATURES_PILOT_REFINED_PATH = Path(
+    "data/processed/phase1_context_features_pilot_refined.parquet"
+)
 DEFAULT_PHASE1_REPORT_PILOT_PATH = Path(
     "reports/phase1_citation_function_screening_pilot_report.md"
+)
+DEFAULT_PHASE1_REPORT_PILOT_REFINED_PATH = Path(
+    "reports/phase1_citation_function_screening_pilot_refined_report.md"
 )
 DEFAULT_PHASE1_LIMIT = 100_000
 
@@ -66,6 +75,7 @@ OUTPUT_COLUMNS = [
     "matched_apply_cues",
     "matched_background_cues",
     "matched_evaluation_cues",
+    "cited_work_description",
     "evidence_span",
     "candidate_intents",
     "primary_candidate_intent",
@@ -73,6 +83,8 @@ OUTPUT_COLUMNS = [
     "primary_candidate_object_type",
     "candidate_relation_subtypes",
     "confidence",
+    "llm_priority",
+    "llm_reason",
     "should_send_to_llm",
     "phase1_reason",
     "matched_rules",
@@ -98,7 +110,10 @@ FEATURE_COLUMNS = [
     "matched_apply_cues",
     "matched_background_cues",
     "matched_evaluation_cues",
+    "cited_work_description",
     "evidence_span",
+    "llm_priority",
+    "llm_reason",
     "matched_rules",
 ]
 
@@ -117,6 +132,16 @@ HIGH_VALUE_SECTIONS = {
 BACKGROUND_SECTIONS = {"introduction", "related_work", "background"}
 CRITIQUE_SECTIONS = {"discussion", "error_analysis"}
 CONCLUSION_SECTIONS = {"conclusion"}
+OBJECT_CONTEXT_SECTIONS = {
+    "method",
+    "model",
+    "implementation",
+    "system_description",
+    "dataset",
+    "experiment",
+    "evaluation",
+    "results",
+}
 
 
 @dataclass(frozen=True)
@@ -297,6 +322,174 @@ BACKGROUND_CUES = [
     CuePattern("line of work", re.compile(r"\bline\s+of\s+work\b", re.IGNORECASE), "none"),
 ]
 
+CITED_WORK_DESCRIPTION_CUES = [
+    CuePattern("described", re.compile(r"\bdescribed\b", re.IGNORECASE), "none"),
+    CuePattern("proposed", re.compile(r"\bproposed\b", re.IGNORECASE), "none"),
+    CuePattern("introduced", re.compile(r"\bintroduced\b", re.IGNORECASE), "none"),
+    CuePattern("annotated", re.compile(r"\bannotated\b", re.IGNORECASE), "none"),
+    CuePattern("used", re.compile(r"\bused\b", re.IGNORECASE), "none"),
+    CuePattern("reported", re.compile(r"\breported\b", re.IGNORECASE), "none"),
+    CuePattern("showed", re.compile(r"\bshow(?:ed|n)\b", re.IGNORECASE), "none"),
+    CuePattern("presented", re.compile(r"\bpresented\b", re.IGNORECASE), "none"),
+    CuePattern("developed", re.compile(r"\bdeveloped\b", re.IGNORECASE), "none"),
+]
+
+CURRENT_WORK_USE_CUES = [
+    CuePattern("we use", re.compile(r"\bwe\s+use\b", re.IGNORECASE), "direct_use"),
+    CuePattern("we used", re.compile(r"\bwe\s+used\b", re.IGNORECASE), "direct_use"),
+    CuePattern("we employ", re.compile(r"\bwe\s+employ(?:ed)?\b", re.IGNORECASE), "direct_use"),
+    CuePattern("we adopt", re.compile(r"\bwe\s+adopt(?:ed)?\b", re.IGNORECASE), "direct_use"),
+    CuePattern("we follow", re.compile(r"\bwe\s+follow(?:ed)?\b", re.IGNORECASE), "direct_use"),
+    CuePattern("we build on", re.compile(r"\bwe\s+build\s+on\b", re.IGNORECASE), "direct_use"),
+    CuePattern("we build upon", re.compile(r"\bwe\s+build\s+upon\b", re.IGNORECASE), "direct_use"),
+    CuePattern(
+        "we initialize", re.compile(r"\bwe\s+initiali[sz]e(?:d)?\b", re.IGNORECASE), "component_use"
+    ),
+    CuePattern(
+        "we train with", re.compile(r"\bwe\s+train(?:ed)?\s+with\b", re.IGNORECASE), "direct_use"
+    ),
+    CuePattern(
+        "we evaluate on", re.compile(r"\bwe\s+evaluate(?:d)?\s+on\b", re.IGNORECASE), "evaluate_on"
+    ),
+    CuePattern("we apply", re.compile(r"\bwe\s+appl(?:y|ied)\b", re.IGNORECASE), "direct_use"),
+    CuePattern(
+        "our method uses",
+        re.compile(r"\bour\s+(?:method|approach|model|system|framework)\s+uses?\b", re.IGNORECASE),
+        "direct_use",
+    ),
+    CuePattern(
+        "this work uses",
+        re.compile(r"\bthis\s+(?:paper|work|study|system|model)\s+uses?\b", re.IGNORECASE),
+        "direct_use",
+    ),
+]
+
+WEAK_USE_CUES = [
+    CuePattern("using", re.compile(r"\busing\b", re.IGNORECASE), "direct_use"),
+    CuePattern("based on", re.compile(r"\bbased\s+on\b", re.IGNORECASE), "direct_use"),
+    CuePattern("following", re.compile(r"\bfollowing\b", re.IGNORECASE), "direct_use"),
+    CuePattern("trained with", re.compile(r"\btrained\s+with\b", re.IGNORECASE), "direct_use"),
+    CuePattern(
+        "implemented using",
+        re.compile(r"\bimplemented\s+using\b", re.IGNORECASE),
+        "component_use",
+    ),
+    CuePattern("built on", re.compile(r"\bbuilt\s+on\b", re.IGNORECASE), "direct_use"),
+    CuePattern(
+        "initialized with",
+        re.compile(r"\binitiali[sz]ed\s+with\b", re.IGNORECASE),
+        "component_use",
+    ),
+]
+
+REFINED_EVALUATION_CUES = [
+    CuePattern("evaluated on", re.compile(r"\bevaluated\s+on\b", re.IGNORECASE), "evaluate_on"),
+    CuePattern("trained on", re.compile(r"\btrained\s+on\b", re.IGNORECASE), "evaluate_on"),
+    CuePattern("tested on", re.compile(r"\btested\s+on\b", re.IGNORECASE), "evaluate_on"),
+    CuePattern(
+        "experiments on",
+        re.compile(r"\bexperiments?\s+on\b", re.IGNORECASE),
+        "evaluate_on",
+    ),
+    CuePattern(
+        "use the dataset",
+        re.compile(r"\buse(?:d|s|ing)?\s+the\s+datasets?\b", re.IGNORECASE),
+        "evaluate_on",
+    ),
+    CuePattern(
+        "using the corpus",
+        re.compile(r"\busing\s+the\s+corpus\b", re.IGNORECASE),
+        "evaluate_on",
+    ),
+    CuePattern(
+        "on the dataset", re.compile(r"\bon\s+the\s+datasets?\b", re.IGNORECASE), "evaluate_on"
+    ),
+    CuePattern("on the corpus", re.compile(r"\bon\s+the\s+corpus\b", re.IGNORECASE), "evaluate_on"),
+    CuePattern("benchmarked on", re.compile(r"\bbenchmarked\s+on\b", re.IGNORECASE), "evaluate_on"),
+]
+
+DATASET_FEATURE_CUES = [
+    CuePattern("dataset", re.compile(r"\bdatasets?\b", re.IGNORECASE), "none"),
+    CuePattern("corpus", re.compile(r"\bcorpus|corpora\b", re.IGNORECASE), "none"),
+    CuePattern("treebank", re.compile(r"\btreebank\b", re.IGNORECASE), "none"),
+    CuePattern("benchmark", re.compile(r"\bbenchmarks?\b", re.IGNORECASE), "none"),
+]
+
+REFINED_COMPARE_CUES = [
+    CuePattern(
+        "compare with", re.compile(r"\bcompare[sd]?\s+with\b", re.IGNORECASE), "compare_against"
+    ),
+    CuePattern(
+        "compare against",
+        re.compile(r"\bcompare[sd]?\s+against\b", re.IGNORECASE),
+        "compare_against",
+    ),
+    CuePattern("compared to", re.compile(r"\bcompared\s+to\b", re.IGNORECASE), "compare_against"),
+    CuePattern("baseline", re.compile(r"\bbaselines?\b", re.IGNORECASE), "compare_against"),
+    CuePattern(
+        "outperform", re.compile(r"\boutperform(?:s|ed|ing)?\b", re.IGNORECASE), "compare_against"
+    ),
+    CuePattern("better than", re.compile(r"\bbetter\s+than\b", re.IGNORECASE), "compare_against"),
+    CuePattern("worse than", re.compile(r"\bworse\s+than\b", re.IGNORECASE), "compare_against"),
+    CuePattern("versus", re.compile(r"\bversus\b", re.IGNORECASE), "compare_against"),
+    CuePattern("vs.", re.compile(r"\bvs\.?\b", re.IGNORECASE), "compare_against"),
+    CuePattern(
+        "benchmark against",
+        re.compile(r"\bbenchmarks?(?:ed|ing)?\s+against\b", re.IGNORECASE),
+        "compare_against",
+    ),
+    CuePattern(
+        "achieves compared",
+        re.compile(r"\bachiev(?:e|es|ed|ing)\b.{0,80}\bcompared\b", re.IGNORECASE),
+        "report_metric",
+    ),
+    CuePattern(
+        "state-of-the-art baseline",
+        re.compile(r"\bstate[- ]of[- ]the[- ]art\s+baselines?\b", re.IGNORECASE),
+        "compare_against",
+    ),
+    CuePattern(
+        "improves over",
+        re.compile(r"\bimprov(?:e|es|ed|ing)\s+over\b", re.IGNORECASE),
+        "compare_against",
+    ),
+]
+
+REFINED_CRITIQUE_CUES = [
+    CuePattern("fails to", re.compile(r"\bfails?\s+to\b", re.IGNORECASE), "critique_limitation"),
+    CuePattern(
+        "cannot", re.compile(r"\bcannot\b|\bcan\s+not\b", re.IGNORECASE), "critique_limitation"
+    ),
+    CuePattern("does not", re.compile(r"\bdoes\s+not\b", re.IGNORECASE), "critique_limitation"),
+    CuePattern(
+        "is limited by", re.compile(r"\bis\s+limited\s+by\b", re.IGNORECASE), "critique_limitation"
+    ),
+    CuePattern(
+        "limitation of", re.compile(r"\blimitations?\s+of\b", re.IGNORECASE), "critique_limitation"
+    ),
+    CuePattern(
+        "drawback of", re.compile(r"\bdrawbacks?\s+of\b", re.IGNORECASE), "critique_limitation"
+    ),
+    CuePattern(
+        "suffers from", re.compile(r"\bsuffers?\s+from\b", re.IGNORECASE), "critique_limitation"
+    ),
+    CuePattern(
+        "however negative",
+        re.compile(
+            r"\bhowever\b.{0,80}\b(?:fails?|cannot|can\s+not|does\s+not|limited)\b",
+            re.IGNORECASE,
+        ),
+        "critique_limitation",
+    ),
+    CuePattern("unlike", re.compile(r"\bunlike\b", re.IGNORECASE), "critique_limitation"),
+    CuePattern("unable to", re.compile(r"\bunable\s+to\b", re.IGNORECASE), "critique_limitation"),
+    CuePattern(
+        "performs poorly",
+        re.compile(r"\bperforms?\s+poorly\b", re.IGNORECASE),
+        "critique_limitation",
+    ),
+]
+
 INTENT_PRIORITY = [
     "critiques",
     "extends",
@@ -319,6 +512,7 @@ def screen_phase1_citation_functions(
     report_path: str | Path = DEFAULT_PHASE1_REPORT_PILOT_PATH,
     limit: int | None = DEFAULT_PHASE1_LIMIT,
     seed: int = 42,
+    refined_rules: bool = False,
 ) -> dict[str, Any]:
     """Run rule-based Phase-1 citation-function screening."""
     if limit is not None and limit < 1:
@@ -341,8 +535,21 @@ def screen_phase1_citation_functions(
         graph_candidates=graph_candidates,
         cited_title_profiles=cited_title_profiles,
     )
+    baseline_candidates = pd.DataFrame()
+    if refined_rules:
+        baseline_rows = [
+            _screen_context(row, object_features.get(str(row["context_id"]), {}))
+            for row in contexts.to_dict("records")
+        ]
+        baseline_candidates = _ensure_columns(pd.DataFrame(baseline_rows), OUTPUT_COLUMNS)[
+            OUTPUT_COLUMNS
+        ]
     screened_rows = [
-        _screen_context(row, object_features.get(str(row["context_id"]), {}))
+        _screen_context(
+            row,
+            object_features.get(str(row["context_id"]), {}),
+            refined_rules=refined_rules,
+        )
         for row in contexts.to_dict("records")
     ]
     candidates = pd.DataFrame(screened_rows)
@@ -365,15 +572,30 @@ def screen_phase1_citation_functions(
         limit=limit,
         seed=seed,
     )
+    baseline_metrics = (
+        build_phase1_metrics(
+            candidates=baseline_candidates,
+            object_mentions=object_mentions,
+            graph_candidates=graph_candidates,
+            cited_title_profiles=cited_title_profiles,
+            limit=limit,
+            seed=seed,
+        )
+        if refined_rules
+        else None
+    )
     report = build_phase1_report(
         metrics=metrics,
         candidates=candidates,
+        baseline_metrics=baseline_metrics,
+        baseline_candidates=baseline_candidates,
         contexts_path=contexts_input,
         object_mentions_path=Path(object_mentions_path),
         object_graph_candidates_path=Path(object_graph_candidates_path),
         cited_title_profiles_path=Path(cited_title_profiles_path),
         out_candidates_path=out_candidates,
         out_features_path=out_features,
+        refined_rules=refined_rules,
     )
     report_output = Path(report_path)
     report_output.parent.mkdir(parents=True, exist_ok=True)
@@ -406,6 +628,11 @@ def build_phase1_metrics(
         "cited_title_profile_input_rows": int(len(cited_title_profiles)),
         "should_send_to_llm_count": send_count,
         "should_send_to_llm_rate": _safe_rate(send_count, input_count),
+        "llm_priority_distribution": _value_counts(
+            candidates,
+            ["llm_priority"],
+            "contexts",
+        ),
         "candidate_intent_distribution": _explode_value_counts(
             candidates,
             "candidate_intents",
@@ -453,12 +680,15 @@ def build_phase1_report(
     *,
     metrics: dict[str, Any],
     candidates: pd.DataFrame,
+    baseline_metrics: dict[str, Any] | None = None,
+    baseline_candidates: pd.DataFrame | None = None,
     contexts_path: Path,
     object_mentions_path: Path,
     object_graph_candidates_path: Path,
     cited_title_profiles_path: Path,
     out_candidates_path: Path,
     out_features_path: Path,
+    refined_rules: bool = False,
 ) -> str:
     """Build a markdown report for Phase-1 citation-function screening."""
     core = pd.DataFrame(
@@ -492,8 +722,13 @@ def build_phase1_report(
             },
         ]
     )
+    title = (
+        "# Phase-1 Citation-Function Screening Pilot Refined Report"
+        if refined_rules
+        else "# Phase-1 Citation-Function Screening Pilot Report"
+    )
     sections = [
-        "# Phase-1 Citation-Function Screening Pilot Report",
+        title,
         "",
         "## Inputs",
         f"- Contexts: `{contexts_path}`",
@@ -509,68 +744,150 @@ def build_phase1_report(
         "## Core Counts",
         _table(core),
         "",
-        "## Candidate Intent Distribution",
-        _table(metrics["candidate_intent_distribution"]),
-        "",
-        "## Primary Candidate Intent Distribution",
-        _table(metrics["primary_candidate_intent_distribution"]),
-        "",
-        "## Candidate Object Type Distribution",
-        _table(metrics["candidate_object_type_distribution"]),
-        "",
-        "## Relation Subtype Distribution",
-        _table(metrics["relation_subtype_distribution"]),
-        "",
-        "## Matched Cue Counts By Group",
-        _table(metrics["cue_counts"]),
-        "",
-        "## Candidate Intent By Normalized Section",
-        _table(metrics["candidate_intent_by_section"]),
-        "",
-        "## Candidate Intent By Object Type",
-        _table(metrics["candidate_intent_by_object_type"]),
-        "",
-        "## Top Object Names By Candidate Intent",
-        _table(metrics["top_object_names_by_candidate_intent"]),
-        "",
-        "## Generic Metric Contexts By Candidate Intent",
-        _table(metrics["generic_metric_contexts_by_candidate_intent"]),
-        "",
-        "## Example Uses",
-        _table(_example_rows(candidates, "uses", 10)),
-        "",
-        "## Example Compares Against",
-        _table(_example_rows(candidates, "compares_against", 10)),
-        "",
-        "## Example Extends",
-        _table(_example_rows(candidates, "extends", 10)),
-        "",
-        "## Example Critiques",
-        _table(_example_rows(candidates, "critiques", 10)),
-        "",
-        "## Example Applies",
-        _table(_example_rows(candidates, "applies", 10)),
-        "",
-        "## Example Background",
-        _table(_example_rows(candidates, "background", 10)),
-        "",
-        "## Multiple Candidate Intent Examples",
-        _table(_multiple_intent_examples(candidates, 10)),
-        "",
-        "## Object Mention But Background Intent Examples",
-        _table(_object_background_examples(candidates, 10)),
-        "",
-        "## No Cue But Object Mention Examples",
-        _table(_no_cue_object_examples(candidates, 10)),
-        "",
-        "## LLM Flagged Examples",
-        _table(_llm_flagged_examples(candidates, 10)),
-        "",
     ]
+    if refined_rules and baseline_metrics is not None and baseline_candidates is not None:
+        sections.extend(
+            [
+                "## Before / After Primary Candidate Intent Distribution",
+                _table(
+                    _before_after_table(
+                        baseline_metrics["primary_candidate_intent_distribution"],
+                        metrics["primary_candidate_intent_distribution"],
+                        key="primary_candidate_intent",
+                    )
+                ),
+                "",
+                "## Before / After LLM Routing",
+                _table(_before_after_llm_table(baseline_metrics, metrics)),
+                "",
+                "## Before / After Selected Intent Counts",
+                _table(_selected_intent_before_after(baseline_metrics, metrics)),
+                "",
+                "## LLM Priority Distribution",
+                _table(metrics["llm_priority_distribution"]),
+                "",
+            ]
+        )
+    sections.extend(
+        [
+            "## Candidate Intent Distribution",
+            _table(metrics["candidate_intent_distribution"]),
+            "",
+            "## Primary Candidate Intent Distribution",
+            _table(metrics["primary_candidate_intent_distribution"]),
+            "",
+            "## Candidate Object Type Distribution",
+            _table(metrics["candidate_object_type_distribution"]),
+            "",
+            "## Relation Subtype Distribution",
+            _table(metrics["relation_subtype_distribution"]),
+            "",
+            "## LLM Priority Distribution",
+            _table(metrics["llm_priority_distribution"]),
+            "",
+            "## Matched Cue Counts By Group",
+            _table(metrics["cue_counts"]),
+            "",
+            "## Candidate Intent By Normalized Section",
+            _table(metrics["candidate_intent_by_section"]),
+            "",
+            "## Candidate Intent By Object Type",
+            _table(metrics["candidate_intent_by_object_type"]),
+            "",
+            "## Top Object Names By Candidate Intent",
+            _table(metrics["top_object_names_by_candidate_intent"]),
+            "",
+            "## Generic Metric Contexts By Candidate Intent",
+            _table(metrics["generic_metric_contexts_by_candidate_intent"]),
+            "",
+            "## Example Uses",
+            _table(_example_rows(candidates, "uses", 10)),
+            "",
+            "## Example Compares Against",
+            _table(_example_rows(candidates, "compares_against", 10)),
+            "",
+            "## Example Extends",
+            _table(_example_rows(candidates, "extends", 10)),
+            "",
+            "## Example Critiques",
+            _table(_example_rows(candidates, "critiques", 10)),
+            "",
+            "## Example Applies",
+            _table(_example_rows(candidates, "applies", 10)),
+            "",
+            "## Example Background",
+            _table(_example_rows(candidates, "background", 10)),
+            "",
+            "## Multiple Candidate Intent Examples",
+            _table(_multiple_intent_examples(candidates, 10)),
+            "",
+            "## Object Mention But Background Intent Examples",
+            _table(_object_background_examples(candidates, 10)),
+            "",
+            "## No Cue But Object Mention Examples",
+            _table(_no_cue_object_examples(candidates, 10)),
+            "",
+            "## LLM Flagged Examples",
+            _table(_llm_flagged_examples(candidates, 10)),
+            "",
+        ]
+    )
+    if refined_rules and baseline_candidates is not None:
+        sections.extend(
+            [
+                "## Changed Label Examples: uses -> background",
+                _table(
+                    _changed_examples(baseline_candidates, candidates, "uses", {"background"}, 10)
+                ),
+                "",
+                "## Changed Label Examples: critiques -> background/unclear",
+                _table(
+                    _changed_examples(
+                        baseline_candidates,
+                        candidates,
+                        "critiques",
+                        {"background", "unclear"},
+                        10,
+                    )
+                ),
+                "",
+                "## Changed Label Examples: compares_against -> background/uses",
+                _table(
+                    _changed_examples(
+                        baseline_candidates,
+                        candidates,
+                        "compares_against",
+                        {"background", "uses"},
+                        10,
+                    )
+                ),
+                "",
+                "## Changed Routing Examples: should_send_to_llm true -> false",
+                _table(_routing_changed_examples(baseline_candidates, candidates, 10)),
+                "",
+                "## High Priority LLM Examples",
+                _table(_priority_examples(candidates, "high", 10)),
+                "",
+                "## Cited-Work Description Examples",
+                _table(_cited_work_description_examples(candidates, 10)),
+                "",
+                "## Current-Paper Use Examples",
+                _table(_current_paper_use_examples(candidates, 10)),
+                "",
+            ]
+        )
     return "\n".join(sections)
 
 
-def _screen_context(context: dict[str, Any], object_feature: dict[str, str]) -> dict[str, Any]:
+def _screen_context(
+    context: dict[str, Any],
+    object_feature: dict[str, str],
+    *,
+    refined_rules: bool = False,
+) -> dict[str, Any]:
+    if refined_rules:
+        return _screen_context_refined(context, object_feature)
+
     sentence = _clean_text(context.get("sentence_text"))
     window = _clean_text(context.get("context_window_s3"))
     normalized_section = _clean_text(context.get("normalized_section")).lower() or "unknown"
@@ -652,6 +969,8 @@ def _screen_context(context: dict[str, Any], object_feature: dict[str, str]) -> 
         has_compare_or_evaluation=has_compare_or_evaluation,
         matched_rules=matched_rules,
     )
+    llm_priority = "medium" if should_send else "none"
+    llm_reason = ";".join(send_reasons)
     phase1_reason = _build_phase1_reason(
         primary_intent=primary_intent,
         confidence=confidence,
@@ -685,6 +1004,7 @@ def _screen_context(context: dict[str, Any], object_feature: dict[str, str]) -> 
             "matched_apply_cues": _join(cues_by_group["apply"]),
             "matched_background_cues": _join(cues_by_group["background"]),
             "matched_evaluation_cues": _join(cues_by_group["evaluation"]),
+            "cited_work_description": False,
             "evidence_span": evidence_span,
             "candidate_intents": _join(intents),
             "primary_candidate_intent": primary_intent,
@@ -692,6 +1012,193 @@ def _screen_context(context: dict[str, Any], object_feature: dict[str, str]) -> 
             "primary_candidate_object_type": _first_split(candidate_object_types, "unknown"),
             "candidate_relation_subtypes": _join(relation_subtypes),
             "confidence": round(confidence, 3),
+            "llm_priority": llm_priority,
+            "llm_reason": llm_reason,
+            "should_send_to_llm": should_send,
+            "phase1_reason": phase1_reason,
+            "matched_rules": _join(_unique_preserve_order(matched_rules)),
+        }
+    )
+    return row
+
+
+def _screen_context_refined(
+    context: dict[str, Any],
+    object_feature: dict[str, str],
+) -> dict[str, Any]:
+    sentence = _clean_text(context.get("sentence_text"))
+    window = _clean_text(context.get("context_window_s3"))
+    normalized_section = _clean_text(context.get("normalized_section")).lower() or "unknown"
+    has_object = _as_bool(object_feature.get("has_object_mention"))
+    has_graph_candidate = _as_bool(object_feature.get("has_graph_candidate_object"))
+    has_generic_metric = bool(object_feature.get("generic_metric_names"))
+    has_title_profile_object = bool(object_feature.get("cited_title_profile_object_names"))
+
+    cited_description_matches = _match_cited_work_description(sentence, window)
+    cited_work_description = bool(cited_description_matches)
+    cue_matches = {
+        "use": _match_cues(CURRENT_WORK_USE_CUES, sentence, window),
+        "weak_use": _match_cues(WEAK_USE_CUES, sentence, window),
+        "compare": _match_cues(REFINED_COMPARE_CUES, sentence, window),
+        "extend": _match_cues(EXTEND_CUES, sentence, window),
+        "critique": _match_cues(REFINED_CRITIQUE_CUES, sentence, window),
+        "apply": _match_cues(APPLY_CUES, sentence, window),
+        "background": _match_cues(BACKGROUND_CUES, sentence, window),
+        "evaluation": _match_cues(REFINED_EVALUATION_CUES, sentence, window),
+        "dataset_feature": _match_cues(DATASET_FEATURE_CUES, sentence, window),
+        "cited_description": cited_description_matches,
+    }
+    cues_by_group = {
+        group: [match["label"] for match in matches] for group, matches in cue_matches.items()
+    }
+    matched_rules = []
+    intents = []
+    relation_subtypes = []
+    strong_current_use = bool(cue_matches["use"])
+    explicit_evaluation = bool(cue_matches["evaluation"])
+    explicit_compare = bool(cue_matches["compare"])
+    weak_use_as_current_use = (
+        bool(cue_matches["weak_use"])
+        and not cited_work_description
+        and has_graph_candidate
+        and normalized_section in OBJECT_CONTEXT_SECTIONS
+    )
+
+    if cited_work_description:
+        intents.append("background")
+        matched_rules.append("cited_work_description")
+    if cue_matches["background"]:
+        intents.append("background")
+        matched_rules.append("background_cue")
+    if strong_current_use:
+        intents.append("uses")
+        relation_subtypes.extend(_relation_subtypes_from_matches(cue_matches["use"]))
+        matched_rules.append("current_paper_use_cue")
+    elif weak_use_as_current_use:
+        intents.append("uses")
+        relation_subtypes.extend(_relation_subtypes_from_matches(cue_matches["weak_use"]))
+        matched_rules.append("weak_use_cue_with_graph_object_in_high_value_section")
+    elif cue_matches["weak_use"]:
+        matched_rules.append("weak_use_context_feature")
+
+    if explicit_evaluation:
+        intents.append("uses")
+        relation_subtypes.extend(_relation_subtypes_from_matches(cue_matches["evaluation"]))
+        matched_rules.append("explicit_evaluation_cue")
+    elif cue_matches["dataset_feature"]:
+        matched_rules.append("dataset_context_feature")
+
+    if explicit_compare:
+        intents.append("compares_against")
+        relation_subtypes.extend(_relation_subtypes_from_matches(cue_matches["compare"]))
+        matched_rules.append("explicit_compare_cue")
+    if cue_matches["extend"]:
+        intents.append("extends")
+        relation_subtypes.extend(_relation_subtypes_from_matches(cue_matches["extend"]))
+        matched_rules.append("extend_cue")
+    if cue_matches["critique"]:
+        intents.append("critiques")
+        relation_subtypes.extend(_relation_subtypes_from_matches(cue_matches["critique"]))
+        matched_rules.append("strong_critique_cue")
+    if cue_matches["apply"]:
+        intents.append("applies")
+        relation_subtypes.extend(_relation_subtypes_from_matches(cue_matches["apply"]))
+        matched_rules.append("apply_cue")
+
+    if has_generic_metric and explicit_compare:
+        intents.append("compares_against")
+        relation_subtypes.append("report_metric")
+        matched_rules.append("generic_metric_with_explicit_compare_cue")
+    elif has_generic_metric and explicit_evaluation:
+        relation_subtypes.append("report_metric")
+        matched_rules.append("generic_metric_with_evaluation_cue")
+    elif has_generic_metric:
+        matched_rules.append("generic_metric_feature_only")
+
+    if not intents:
+        section_prior = _section_prior_intent(normalized_section)
+        if section_prior is not None:
+            intents.append(section_prior)
+            matched_rules.append(f"weak_section_prior:{normalized_section}")
+        else:
+            intents.append("unclear")
+            matched_rules.append("no_cue")
+
+    intents = _unique_preserve_order(intents)
+    relation_subtypes = _unique_preserve_order(relation_subtypes) or ["none"]
+    primary_intent = _primary_intent(intents)
+    evidence_span = _choose_refined_evidence_span(
+        cue_matches=cue_matches,
+        primary_intent=primary_intent,
+        cited_work_description=cited_work_description,
+    )
+    confidence = _refined_confidence(
+        primary_intent=primary_intent,
+        matched_rules=matched_rules,
+        has_object=has_object,
+        has_graph_candidate=has_graph_candidate,
+    )
+    llm_priority, llm_reason = _llm_priority(
+        intents=intents,
+        primary_intent=primary_intent,
+        matched_rules=matched_rules,
+        normalized_section=normalized_section,
+        has_object=has_object,
+        has_graph_candidate=has_graph_candidate,
+        has_title_profile_object=has_title_profile_object,
+        strong_current_use=strong_current_use,
+        explicit_compare=explicit_compare,
+        explicit_evaluation=explicit_evaluation,
+        cited_work_description=cited_work_description,
+    )
+    should_send = llm_priority in {"high", "medium"}
+    phase1_reason = _build_phase1_reason(
+        primary_intent=primary_intent,
+        confidence=confidence,
+        send_reasons=llm_reason.split(";") if llm_reason else [],
+        has_object=has_object,
+        has_graph_candidate=has_graph_candidate,
+    )
+    candidate_object_types = object_feature.get("object_types") or object_feature.get(
+        "cited_title_profile_object_types",
+        "unknown",
+    )
+    row = {column: context.get(column, "") for column in CONTEXT_COLUMNS}
+    row.update(
+        {
+            "has_object_mention": has_object,
+            "has_graph_candidate_object": has_graph_candidate,
+            "object_ids": object_feature.get("object_ids", ""),
+            "object_names": object_feature.get("object_names", ""),
+            "object_types": object_feature.get("object_types", ""),
+            "graph_candidate_object_ids": object_feature.get("graph_candidate_object_ids", ""),
+            "graph_candidate_object_names": object_feature.get("graph_candidate_object_names", ""),
+            "generic_metric_names": object_feature.get("generic_metric_names", ""),
+            "cited_title_profile_object_names": object_feature.get(
+                "cited_title_profile_object_names",
+                "",
+            ),
+            "matched_use_cues": _join(cues_by_group["use"] + cues_by_group["weak_use"]),
+            "matched_compare_cues": _join(cues_by_group["compare"]),
+            "matched_extend_cues": _join(cues_by_group["extend"]),
+            "matched_critique_cues": _join(cues_by_group["critique"]),
+            "matched_apply_cues": _join(cues_by_group["apply"]),
+            "matched_background_cues": _join(
+                cues_by_group["background"] + cues_by_group["cited_description"]
+            ),
+            "matched_evaluation_cues": _join(
+                cues_by_group["evaluation"] + cues_by_group["dataset_feature"]
+            ),
+            "cited_work_description": cited_work_description,
+            "evidence_span": evidence_span,
+            "candidate_intents": _join(intents),
+            "primary_candidate_intent": primary_intent,
+            "candidate_object_types": candidate_object_types,
+            "primary_candidate_object_type": _first_split(candidate_object_types, "unknown"),
+            "candidate_relation_subtypes": _join(relation_subtypes),
+            "confidence": round(confidence, 3),
+            "llm_priority": llm_priority,
+            "llm_reason": llm_reason,
             "should_send_to_llm": should_send,
             "phase1_reason": phase1_reason,
             "matched_rules": _join(_unique_preserve_order(matched_rules)),
@@ -823,13 +1330,33 @@ def _match_critique_cues(sentence: str, context_window: str) -> list[dict[str, s
     return []
 
 
+def _match_cited_work_description(sentence: str, context_window: str) -> list[dict[str, str | int]]:
+    matches = _match_cues(CITED_WORK_DESCRIPTION_CUES, sentence, context_window)
+    if not matches:
+        return []
+    citation_like = bool(
+        re.search(r"\b[A-Z][A-Za-z'`-]+(?:\s+et\s+al\.)?\s*\(\d{4}[a-z]?\)", sentence)
+        or re.search(r"\b[A-Z][A-Za-z'`-]+\s+and\s+[A-Z][A-Za-z'`-]+", sentence)
+        or re.search(r"\bauthors?\s+(?:in\s+)?\(", sentence, re.IGNORECASE)
+    )
+    if citation_like:
+        return matches
+    return []
+
+
 def _relation_subtypes_from_cues(cue_matches: dict[str, list[dict[str, str | int]]]) -> list[str]:
     relation_subtypes = []
     for matches in cue_matches.values():
-        for match in matches:
-            subtype = str(match.get("relation_subtype") or "")
-            if subtype and subtype != "none":
-                relation_subtypes.append(subtype)
+        relation_subtypes.extend(_relation_subtypes_from_matches(matches))
+    return relation_subtypes
+
+
+def _relation_subtypes_from_matches(matches: list[dict[str, str | int]]) -> list[str]:
+    relation_subtypes = []
+    for match in matches:
+        subtype = str(match.get("relation_subtype") or "")
+        if subtype and subtype != "none":
+            relation_subtypes.append(subtype)
     return relation_subtypes
 
 
@@ -843,6 +1370,59 @@ def _choose_evidence_span(cue_matches: dict[str, list[dict[str, str | int]]]) ->
         return ""
     sentence_matches = [match for match in all_matches if match["matched_in"] == "sentence_text"]
     selected = sorted(sentence_matches or all_matches, key=lambda item: int(item["start"]))[0]
+    return str(selected["span"])
+
+
+def _choose_refined_evidence_span(
+    *,
+    cue_matches: dict[str, list[dict[str, str | int]]],
+    primary_intent: str,
+    cited_work_description: bool,
+) -> str:
+    if cited_work_description and primary_intent == "background":
+        description_span = _first_evidence_match(cue_matches["cited_description"])
+        if description_span:
+            return description_span
+    priority = [
+        "critique",
+        "extend",
+        "compare",
+        "use",
+        "evaluation",
+        "apply",
+        "background",
+        "cited_description",
+        "weak_use",
+        "dataset_feature",
+    ]
+    if primary_intent == "uses":
+        priority = ["use", "evaluation", "weak_use", *priority]
+    elif primary_intent == "compares_against":
+        priority = ["compare", *priority]
+    elif primary_intent == "extends":
+        priority = ["extend", *priority]
+    elif primary_intent == "critiques":
+        priority = ["critique", *priority]
+    elif primary_intent == "applies":
+        priority = ["apply", *priority]
+    elif primary_intent == "background":
+        priority = ["background", "cited_description", *priority]
+    seen = set()
+    for group in priority:
+        if group in seen:
+            continue
+        seen.add(group)
+        span = _first_evidence_match(cue_matches.get(group, []))
+        if span:
+            return span
+    return ""
+
+
+def _first_evidence_match(matches: list[dict[str, str | int]]) -> str:
+    if not matches:
+        return ""
+    sentence_matches = [match for match in matches if match["matched_in"] == "sentence_text"]
+    selected = sorted(sentence_matches or matches, key=lambda item: int(item["start"]))[0]
     return str(selected["span"])
 
 
@@ -887,6 +1467,102 @@ def _confidence(
     if has_object:
         return 0.45
     return 0.25
+
+
+def _refined_confidence(
+    *,
+    primary_intent: str,
+    matched_rules: list[str],
+    has_object: bool,
+    has_graph_candidate: bool,
+) -> float:
+    if "weak_section_prior" in ";".join(matched_rules):
+        return 0.35 if primary_intent == "background" else 0.4
+    if "no_cue" in matched_rules:
+        return 0.42 if has_graph_candidate else 0.35 if has_object else 0.2
+    if "cited_work_description" in matched_rules and primary_intent == "background":
+        return 0.6 if has_object or has_graph_candidate else 0.55
+    if primary_intent in {"compares_against", "extends", "critiques"}:
+        return 0.9 if has_graph_candidate else 0.75
+    if primary_intent in {"uses", "applies"}:
+        if "current_paper_use_cue" in matched_rules and has_graph_candidate:
+            return 0.9
+        if "current_paper_use_cue" in matched_rules and has_object:
+            return 0.85
+        if "weak_use_cue_with_graph_object_in_high_value_section" in matched_rules:
+            return 0.65
+        return 0.65
+    if primary_intent == "background":
+        return 0.55
+    return 0.45 if has_object else 0.25
+
+
+def _llm_priority(
+    *,
+    intents: list[str],
+    primary_intent: str,
+    matched_rules: list[str],
+    normalized_section: str,
+    has_object: bool,
+    has_graph_candidate: bool,
+    has_title_profile_object: bool,
+    strong_current_use: bool,
+    explicit_compare: bool,
+    explicit_evaluation: bool,
+    cited_work_description: bool,
+) -> tuple[str, str]:
+    reasons = []
+    non_background = {intent for intent in intents if intent not in {"background", "unclear"}}
+    if primary_intent in {"extends", "critiques", "compares_against"} and any(
+        rule in matched_rules
+        for rule in {"extend_cue", "strong_critique_cue", "explicit_compare_cue"}
+    ):
+        reasons.append("strong_explicit_non_background_cue")
+    if has_graph_candidate and (
+        strong_current_use or explicit_compare or "extend_cue" in matched_rules
+    ):
+        reasons.append("graph_object_with_current_use_compare_or_extend")
+    if len(non_background) > 1:
+        reasons.append("multiple_conflicting_non_background_labels")
+    if "generic_metric_with_explicit_compare_cue" in matched_rules:
+        reasons.append("generic_metric_with_explicit_compare_cue")
+    if reasons:
+        return "high", ";".join(_unique_preserve_order(reasons))
+
+    if has_object and any(
+        rule in matched_rules
+        for rule in {
+            "weak_use_context_feature",
+            "weak_use_cue_with_graph_object_in_high_value_section",
+            "dataset_context_feature",
+            "generic_metric_with_evaluation_cue",
+        }
+    ):
+        reasons.append("object_mention_with_weak_cue")
+    if cited_work_description and (has_object or has_graph_candidate or has_title_profile_object):
+        reasons.append("cited_work_description_with_high_value_object")
+    if primary_intent == "unclear" and has_graph_candidate:
+        reasons.append("unclear_with_graph_candidate")
+    if strong_current_use and not has_object:
+        reasons.append("current_paper_use_without_object_evidence")
+    if explicit_evaluation and has_object:
+        reasons.append("object_mention_with_evaluation_cue")
+    if reasons:
+        return "medium", ";".join(_unique_preserve_order(reasons))
+
+    if primary_intent == "background" and has_object:
+        return "low", "background_with_object_mention"
+    if "no_cue" in matched_rules and has_object:
+        return "low", "no_cue_object_mention"
+    if any(rule.startswith("weak_section_prior:") for rule in matched_rules):
+        return "low", "section_prior_only"
+    if primary_intent == "background" and not has_object:
+        return "none", "clear_background_no_object"
+    if "no_cue" in matched_rules and not has_object:
+        return "none", "no_cue_no_object"
+    if normalized_section in HIGH_VALUE_SECTIONS and has_object:
+        return "low", f"high_value_section_object:{normalized_section}"
+    return "none", "no_priority_rule"
 
 
 def _should_send_to_llm(
@@ -1019,6 +1695,84 @@ def _llm_flagged_examples(candidates: pd.DataFrame, limit: int) -> pd.DataFrame:
     return _format_examples(candidates.loc[candidates["should_send_to_llm"]], limit)
 
 
+def _priority_examples(candidates: pd.DataFrame, priority: str, limit: int) -> pd.DataFrame:
+    return _format_examples(candidates.loc[candidates["llm_priority"].eq(priority)], limit)
+
+
+def _cited_work_description_examples(candidates: pd.DataFrame, limit: int) -> pd.DataFrame:
+    return _format_examples(
+        candidates.loc[candidates["cited_work_description"].map(_as_bool)], limit
+    )
+
+
+def _current_paper_use_examples(candidates: pd.DataFrame, limit: int) -> pd.DataFrame:
+    mask = candidates["matched_rules"].fillna("").astype(str).str.contains("current_paper_use_cue")
+    return _format_examples(candidates.loc[mask], limit)
+
+
+def _changed_examples(
+    before: pd.DataFrame,
+    after: pd.DataFrame,
+    before_intent: str,
+    after_intents: set[str],
+    limit: int,
+) -> pd.DataFrame:
+    merged = _merge_before_after(before, after)
+    mask = merged["before_primary_candidate_intent"].eq(before_intent) & merged[
+        "primary_candidate_intent"
+    ].isin(after_intents)
+    return _format_changed_examples(merged.loc[mask], limit)
+
+
+def _routing_changed_examples(
+    before: pd.DataFrame, after: pd.DataFrame, limit: int
+) -> pd.DataFrame:
+    merged = _merge_before_after(before, after)
+    mask = merged["before_should_send_to_llm"].map(_as_bool) & ~merged["should_send_to_llm"].map(
+        _as_bool
+    )
+    return _format_changed_examples(merged.loc[mask], limit)
+
+
+def _merge_before_after(before: pd.DataFrame, after: pd.DataFrame) -> pd.DataFrame:
+    before_columns = [
+        "context_id",
+        "primary_candidate_intent",
+        "candidate_intents",
+        "should_send_to_llm",
+    ]
+    before_slim = _ensure_columns(before.copy(), before_columns)[before_columns].rename(
+        columns={
+            "primary_candidate_intent": "before_primary_candidate_intent",
+            "candidate_intents": "before_candidate_intents",
+            "should_send_to_llm": "before_should_send_to_llm",
+        }
+    )
+    return after.merge(before_slim, on="context_id", how="left")
+
+
+def _format_changed_examples(frame: pd.DataFrame, limit: int) -> pd.DataFrame:
+    columns = [
+        "context_id",
+        "normalized_section",
+        "before_primary_candidate_intent",
+        "primary_candidate_intent",
+        "before_candidate_intents",
+        "candidate_intents",
+        "llm_priority",
+        "should_send_to_llm",
+        "cited_work_description",
+        "object_names",
+        "evidence_span",
+        "matched_rules",
+        "sentence_text",
+    ]
+    sample = _ensure_columns(frame.head(limit).copy(), columns)
+    for column in ("sentence_text", "object_names", "matched_rules"):
+        sample[column] = sample[column].map(lambda value: _truncate(value, 180))
+    return sample[columns]
+
+
 def _format_examples(frame: pd.DataFrame, limit: int) -> pd.DataFrame:
     columns = [
         "context_id",
@@ -1027,7 +1781,10 @@ def _format_examples(frame: pd.DataFrame, limit: int) -> pd.DataFrame:
         "candidate_intents",
         "candidate_relation_subtypes",
         "confidence",
+        "llm_priority",
+        "llm_reason",
         "should_send_to_llm",
+        "cited_work_description",
         "object_names",
         "generic_metric_names",
         "evidence_span",
@@ -1035,7 +1792,13 @@ def _format_examples(frame: pd.DataFrame, limit: int) -> pd.DataFrame:
         "sentence_text",
     ]
     sample = _ensure_columns(frame.head(limit).copy(), columns)
-    for column in ("sentence_text", "object_names", "generic_metric_names", "matched_rules"):
+    for column in (
+        "sentence_text",
+        "object_names",
+        "generic_metric_names",
+        "matched_rules",
+        "llm_reason",
+    ):
         sample[column] = sample[column].map(lambda value: _truncate(value, 180))
     return sample[columns]
 
@@ -1051,6 +1814,75 @@ def _explode_value_counts(
         [output_column],
         count_name,
     )
+
+
+def _before_after_table(
+    before: pd.DataFrame,
+    after: pd.DataFrame,
+    *,
+    key: str,
+) -> pd.DataFrame:
+    before_slim = _ensure_columns(before.copy(), [key, "contexts"]).rename(
+        columns={"contexts": "before_contexts"}
+    )
+    after_slim = _ensure_columns(after.copy(), [key, "contexts"]).rename(
+        columns={"contexts": "after_contexts"}
+    )
+    merged = before_slim.merge(after_slim, on=key, how="outer").fillna(0)
+    merged["before_contexts"] = merged["before_contexts"].astype(int)
+    merged["after_contexts"] = merged["after_contexts"].astype(int)
+    merged["delta"] = merged["after_contexts"] - merged["before_contexts"]
+    return merged.sort_values("after_contexts", ascending=False).reset_index(drop=True)
+
+
+def _before_after_llm_table(
+    before_metrics: dict[str, Any],
+    after_metrics: dict[str, Any],
+) -> pd.DataFrame:
+    before_rate = before_metrics["should_send_to_llm_rate"]
+    after_rate = after_metrics["should_send_to_llm_rate"]
+    return pd.DataFrame(
+        [
+            {
+                "metric": "should_send_to_llm_count",
+                "before": before_metrics["should_send_to_llm_count"],
+                "after": after_metrics["should_send_to_llm_count"],
+                "delta": after_metrics["should_send_to_llm_count"]
+                - before_metrics["should_send_to_llm_count"],
+            },
+            {
+                "metric": "should_send_to_llm_rate",
+                "before": f"{before_rate:.3f}",
+                "after": f"{after_rate:.3f}",
+                "delta": f"{after_rate - before_rate:.3f}",
+            },
+        ]
+    )
+
+
+def _selected_intent_before_after(
+    before_metrics: dict[str, Any],
+    after_metrics: dict[str, Any],
+) -> pd.DataFrame:
+    before = before_metrics["primary_candidate_intent_distribution"].set_index(
+        "primary_candidate_intent"
+    )["contexts"]
+    after = after_metrics["primary_candidate_intent_distribution"].set_index(
+        "primary_candidate_intent"
+    )["contexts"]
+    rows = []
+    for intent in ["uses", "critiques", "compares_against", "background", "unclear"]:
+        before_count = int(before.get(intent, 0))
+        after_count = int(after.get(intent, 0))
+        rows.append(
+            {
+                "primary_candidate_intent": intent,
+                "before_contexts": before_count,
+                "after_contexts": after_count,
+                "delta": after_count - before_count,
+            }
+        )
+    return pd.DataFrame(rows)
 
 
 def _explode_values(frame: pd.DataFrame, source_column: str, output_column: str) -> pd.DataFrame:

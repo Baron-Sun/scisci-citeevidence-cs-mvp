@@ -395,6 +395,9 @@ objects:
     runner = CliRunner()
     cli_out = tmp_path / "cli_mentions.parquet"
     cli_profiles = tmp_path / "cli_profiles.parquet"
+    cli_graph = tmp_path / "cli_graph.parquet"
+    cli_strict_graph = tmp_path / "cli_strict_graph.parquet"
+    cli_broad_graph = tmp_path / "cli_broad_graph.parquet"
     cli_review = tmp_path / "cli_review.csv"
     cli_report = tmp_path / "cli_report.md"
     result = runner.invoke(
@@ -410,6 +413,12 @@ objects:
             str(cli_out),
             "--cited-title-profiles",
             str(cli_profiles),
+            "--object-graph-candidates",
+            str(cli_graph),
+            "--strict-object-graph-candidates",
+            str(cli_strict_graph),
+            "--broad-object-graph-candidates",
+            str(cli_broad_graph),
             "--review-sample",
             str(cli_review),
             "--report",
@@ -423,6 +432,9 @@ objects:
     assert "Processed 1 contexts" in result.stdout
     assert cli_out.exists()
     assert cli_profiles.exists()
+    assert cli_graph.exists()
+    assert cli_strict_graph.exists()
+    assert cli_broad_graph.exists()
     assert cli_review.exists()
     assert cli_report.exists()
 

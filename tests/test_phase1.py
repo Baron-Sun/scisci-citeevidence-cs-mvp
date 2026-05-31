@@ -76,6 +76,8 @@ def _run_phase1(
     contexts: list[dict[str, object]],
     mentions: list[dict[str, object]],
     graph_mentions: list[dict[str, object]] | None = None,
+    *,
+    refined_rules: bool = False,
 ) -> pd.DataFrame:
     contexts_path, mentions_path, graph_path, title_profiles_path = _write_inputs(
         tmp_path,
@@ -96,6 +98,7 @@ def _run_phase1(
         report_path=report,
         limit=100,
         seed=42,
+        refined_rules=refined_rules,
     )
     assert out_features.exists()
     assert "## Core Counts" in report.read_text(encoding="utf-8")
@@ -273,3 +276,193 @@ def test_phase1_cli_screen_command_runs(tmp_path: Path) -> None:
     assert result.exit_code == 0
     assert pd.read_parquet(out_candidates).shape[0] == 1
     assert report.exists()
+
+
+def test_refined_described_task_is_cited_work_description_background(
+    tmp_path: Path,
+) -> None:
+    frame = _run_phase1(
+        tmp_path,
+        [
+            _context(
+                "ctx_described",
+                (
+                    "Elsner and Charniak (2010) described the task as clustering "
+                    "text using intrinsic information."
+                ),
+                normalized_section="introduction",
+            )
+        ],
+        [],
+        graph_mentions=[],
+        refined_rules=True,
+    )
+    row = _row(frame, "ctx_described")
+    assert row["primary_candidate_intent"] == "background"
+    assert bool(row["cited_work_description"])
+    assert "uses" not in row["candidate_intents"]
+
+
+def test_refined_annotated_corpus_is_not_direct_use(tmp_path: Path) -> None:
+    frame = _run_phase1(
+        tmp_path,
+        [
+            _context(
+                "ctx_annotated",
+                "Carenini et al. (2008) annotated 39 email conversations from the Enron corpus.",
+                normalized_section="introduction",
+            )
+        ],
+        [],
+        graph_mentions=[],
+        refined_rules=True,
+    )
+    row = _row(frame, "ctx_annotated")
+    assert row["primary_candidate_intent"] == "background"
+    assert bool(row["cited_work_description"])
+    assert "direct_use" not in row["candidate_relation_subtypes"]
+
+
+def test_refined_we_use_and_our_model_uses_are_uses(tmp_path: Path) -> None:
+    frame = _run_phase1(
+        tmp_path,
+        [
+            _context("ctx_we_use", "We use BERT for tagging."),
+            _context("ctx_our_model", "Our model uses BERT embeddings."),
+        ],
+        [_mention("ctx_we_use"), _mention("ctx_our_model")],
+        refined_rules=True,
+    )
+    assert _row(frame, "ctx_we_use")["primary_candidate_intent"] == "uses"
+    assert _row(frame, "ctx_our_model")["primary_candidate_intent"] == "uses"
+
+
+def test_refined_using_without_current_subject_is_low_confidence(
+    tmp_path: Path,
+) -> None:
+    frame = _run_phase1(
+        tmp_path,
+        [_context("ctx_using", "The task is solved using latent variables.")],
+        [_mention("ctx_using")],
+        graph_mentions=[],
+        refined_rules=True,
+    )
+    row = _row(frame, "ctx_using")
+    assert row["primary_candidate_intent"] == "unclear"
+    assert row["confidence"] < 0.5
+    assert row["llm_priority"] == "medium"
+
+
+def test_refined_error_and_however_alone_do_not_trigger_critiques(
+    tmp_path: Path,
+) -> None:
+    frame = _run_phase1(
+        tmp_path,
+        [
+            _context("ctx_error_detection", "Error detection has been studied widely."),
+            _context("ctx_alignment_error", "Alignment error rate is reported in prior work."),
+            _context("ctx_however", "However, the task remains common."),
+        ],
+        [],
+        graph_mentions=[],
+        refined_rules=True,
+    )
+    assert _row(frame, "ctx_error_detection")["primary_candidate_intent"] != "critiques"
+    assert _row(frame, "ctx_alignment_error")["primary_candidate_intent"] != "critiques"
+    assert _row(frame, "ctx_however")["primary_candidate_intent"] != "critiques"
+
+
+def test_refined_based_on_alone_does_not_trigger_compares_against(
+    tmp_path: Path,
+) -> None:
+    frame = _run_phase1(
+        tmp_path,
+        [_context("ctx_based", "The tagger is based on BERT.")],
+        [_mention("ctx_based")],
+        refined_rules=True,
+    )
+    assert _row(frame, "ctx_based")["primary_candidate_intent"] != "compares_against"
+
+
+def test_refined_explicit_compare_triggers_compares_against(tmp_path: Path) -> None:
+    frame = _run_phase1(
+        tmp_path,
+        [_context("ctx_compare_refined", "We compared with BERT baselines.")],
+        [_mention("ctx_compare_refined")],
+        refined_rules=True,
+    )
+    row = _row(frame, "ctx_compare_refined")
+    assert row["primary_candidate_intent"] == "compares_against"
+    assert row["llm_priority"] == "high"
+
+
+def test_refined_generic_metric_alone_is_not_compares_against(
+    tmp_path: Path,
+) -> None:
+    frame = _run_phase1(
+        tmp_path,
+        [_context("ctx_metric_alone", "The paper reports F1.")],
+        [
+            _mention(
+                "ctx_metric_alone",
+                object_id="obj_f1",
+                canonical_name="F1",
+                object_type="metric",
+                object_category="generic_metric",
+                graph_eligible=False,
+            )
+        ],
+        graph_mentions=[],
+        refined_rules=True,
+    )
+    row = _row(frame, "ctx_metric_alone")
+    assert row["primary_candidate_intent"] != "compares_against"
+    assert "report_metric" not in row["candidate_relation_subtypes"]
+
+
+def test_refined_generic_metric_with_compare_is_report_metric(
+    tmp_path: Path,
+) -> None:
+    frame = _run_phase1(
+        tmp_path,
+        [_context("ctx_metric_compare", "Our system has better F1 than the baseline.")],
+        [
+            _mention(
+                "ctx_metric_compare",
+                object_id="obj_f1",
+                canonical_name="F1",
+                object_type="metric",
+                object_category="generic_metric",
+                graph_eligible=False,
+            )
+        ],
+        graph_mentions=[],
+        refined_rules=True,
+    )
+    row = _row(frame, "ctx_metric_compare")
+    assert row["primary_candidate_intent"] == "compares_against"
+    assert "report_metric" in row["candidate_relation_subtypes"]
+    assert row["llm_priority"] == "high"
+
+
+def test_refined_priority_controls_should_send_to_llm(tmp_path: Path) -> None:
+    frame = _run_phase1(
+        tmp_path,
+        [
+            _context(
+                "ctx_low", "Previous work introduced BERT.", normalized_section="introduction"
+            ),
+            _context("ctx_none", "The task is common.", normalized_section="unknown"),
+        ],
+        [_mention("ctx_low")],
+        graph_mentions=[],
+        refined_rules=True,
+    )
+    low = _row(frame, "ctx_low")
+    none = _row(frame, "ctx_none")
+    assert low["llm_priority"] == "low"
+    assert not bool(low["should_send_to_llm"])
+    assert none["llm_priority"] == "none"
+    assert not bool(none["should_send_to_llm"])
+    for _, row in frame.iterrows():
+        assert bool(row["should_send_to_llm"]) == (row["llm_priority"] in {"high", "medium"})
