@@ -116,15 +116,18 @@ from citeevidence.objects import (
 from citeevidence.phase1 import (
     DEFAULT_PHASE1_CANDIDATES_PILOT_PATH,
     DEFAULT_PHASE1_CANDIDATES_PILOT_REFINED_PATH,
+    DEFAULT_PHASE1_CANDIDATES_PILOT_REFINED_V2_PATH,
     DEFAULT_PHASE1_CITED_TITLE_PROFILES_PATH,
     DEFAULT_PHASE1_CONTEXTS_PATH,
     DEFAULT_PHASE1_FEATURES_PILOT_PATH,
     DEFAULT_PHASE1_FEATURES_PILOT_REFINED_PATH,
+    DEFAULT_PHASE1_FEATURES_PILOT_REFINED_V2_PATH,
     DEFAULT_PHASE1_LIMIT,
     DEFAULT_PHASE1_OBJECT_GRAPH_CANDIDATES_PATH,
     DEFAULT_PHASE1_OBJECT_MENTIONS_PATH,
     DEFAULT_PHASE1_REPORT_PILOT_PATH,
     DEFAULT_PHASE1_REPORT_PILOT_REFINED_PATH,
+    DEFAULT_PHASE1_REPORT_PILOT_REFINED_V2_PATH,
     screen_phase1_citation_functions,
 )
 from citeevidence.phase1_llm_review import (
@@ -1106,10 +1109,24 @@ def screen_phase1(
             help="Use tightened Task 9A.1 rules and write refined pilot outputs.",
         ),
     ] = False,
+    refined_rules_v2: Annotated[
+        bool,
+        typer.Option(
+            "--refined-rules-v2",
+            help="Use Task 9A.3 second-refinement rules and write v2 pilot outputs.",
+        ),
+    ] = False,
 ) -> None:
     """Run rule-based Phase-1 citation-function candidate screening."""
     try:
-        if refined_rules:
+        if refined_rules_v2:
+            if out_candidates == DEFAULT_PHASE1_CANDIDATES_PILOT_PATH:
+                out_candidates = DEFAULT_PHASE1_CANDIDATES_PILOT_REFINED_V2_PATH
+            if out_features == DEFAULT_PHASE1_FEATURES_PILOT_PATH:
+                out_features = DEFAULT_PHASE1_FEATURES_PILOT_REFINED_V2_PATH
+            if report == DEFAULT_PHASE1_REPORT_PILOT_PATH:
+                report = DEFAULT_PHASE1_REPORT_PILOT_REFINED_V2_PATH
+        elif refined_rules:
             if out_candidates == DEFAULT_PHASE1_CANDIDATES_PILOT_PATH:
                 out_candidates = DEFAULT_PHASE1_CANDIDATES_PILOT_REFINED_PATH
             if out_features == DEFAULT_PHASE1_FEATURES_PILOT_PATH:
@@ -1127,6 +1144,7 @@ def screen_phase1(
             limit=limit,
             seed=seed,
             refined_rules=refined_rules,
+            refined_rules_v2=refined_rules_v2,
         )
     except (FileNotFoundError, OSError, ValueError) as exc:
         error_console.print(f"[red]Failed to run Phase-1 screening:[/red] {exc}")
