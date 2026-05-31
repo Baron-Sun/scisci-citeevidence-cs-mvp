@@ -660,3 +660,102 @@ def test_refined_v2_high_priority_is_strict_and_evidence_uses_current_cue(
     assert high["should_send_to_llm"]
     assert "we use" in high["evidence_span"].lower()
     assert weak["llm_priority"] != "high"
+
+
+def test_refined_v2_full_mode_writes_llm_queues_and_report(tmp_path: Path) -> None:
+    contexts = [
+        _context("ctx_use", "We use BERT for tagging."),
+        _context("ctx_compare", "We compare against BERT as a baseline."),
+        _context("ctx_bg_graph", "Previous work introduced BERT."),
+        _context("ctx_metric", "Our model has better F1 than the baseline."),
+        _context("ctx_unclear", "BERT representations are included."),
+    ]
+    mentions = [
+        _mention("ctx_use"),
+        _mention("ctx_compare"),
+        _mention("ctx_bg_graph"),
+        _mention(
+            "ctx_metric",
+            object_id="obj_f1",
+            canonical_name="F1",
+            object_type="metric",
+            object_category="generic_metric",
+            graph_eligible=False,
+        ),
+        _mention("ctx_unclear"),
+    ]
+    contexts_path, mentions_path, graph_path, title_profiles_path = _write_inputs(
+        tmp_path,
+        contexts,
+        mentions,
+        graph_mentions=[
+            _mention("ctx_use"),
+            _mention("ctx_compare"),
+            _mention("ctx_bg_graph"),
+        ],
+    )
+    out_candidates = tmp_path / "full_candidates.parquet"
+    out_features = tmp_path / "full_features.parquet"
+    out_high = tmp_path / "queue_high.parquet"
+    out_medium = tmp_path / "queue_medium.parquet"
+    out_sample = tmp_path / "queue_sample.parquet"
+    report = tmp_path / "full_report.md"
+
+    metrics = screen_phase1_citation_functions(
+        contexts_path=contexts_path,
+        object_mentions_path=mentions_path,
+        object_graph_candidates_path=graph_path,
+        cited_title_profiles_path=title_profiles_path,
+        out_candidates_path=out_candidates,
+        out_features_path=out_features,
+        out_llm_high_path=out_high,
+        out_llm_medium_path=out_medium,
+        out_llm_sample_path=out_sample,
+        report_path=report,
+        limit=None,
+        seed=42,
+        refined_rules_v2=True,
+    )
+
+    candidates = pd.read_parquet(out_candidates)
+    high = pd.read_parquet(out_high)
+    medium = pd.read_parquet(out_medium)
+    sample = pd.read_parquet(out_sample)
+    text = report.read_text(encoding="utf-8")
+    assert metrics["configured_limit"] == "full"
+    assert candidates.shape[0] == len(contexts)
+    assert not high.empty
+    assert set(high["llm_priority"]) == {"high"}
+    assert set(medium["llm_priority"]).issubset({"medium"})
+    assert sample.shape[0] == high.shape[0] + medium.shape[0]
+    assert "## LLM Queue Stats" in text
+    assert "## Evidence Span Support Sanity Checks" in text
+
+
+def test_refined_v2_object_source_quality_checks(tmp_path: Path) -> None:
+    frame = _run_phase1(
+        tmp_path,
+        [
+            _context("ctx_none", "The task is common."),
+            _context("ctx_metric", "The paper reports F1."),
+            _context("ctx_title", "Previous work introduced alignment."),
+        ],
+        [
+            _mention(
+                "ctx_metric",
+                object_id="obj_f1",
+                canonical_name="F1",
+                object_type="metric",
+                object_category="generic_metric",
+                graph_eligible=False,
+            )
+        ],
+        graph_mentions=[],
+        refined_rules_v2=True,
+    )
+    none = _row(frame, "ctx_none")
+    metric = _row(frame, "ctx_metric")
+    assert none["object_type_source"] == "none"
+    assert none["primary_candidate_object_type"] == "unknown"
+    assert metric["object_type_source"] == "generic_metric_feature"
+    assert not bool(metric["has_graph_candidate_object"])

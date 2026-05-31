@@ -114,17 +114,23 @@ from citeevidence.objects import (
     DEFAULT_OBJECT_GRAPH_CANDIDATES_PATH as DEFAULT_FULL_OBJECT_GRAPH_CANDIDATES_PATH,
 )
 from citeevidence.phase1 import (
+    DEFAULT_PHASE1_CANDIDATES_FULL_PATH,
     DEFAULT_PHASE1_CANDIDATES_PILOT_PATH,
     DEFAULT_PHASE1_CANDIDATES_PILOT_REFINED_PATH,
     DEFAULT_PHASE1_CANDIDATES_PILOT_REFINED_V2_PATH,
     DEFAULT_PHASE1_CITED_TITLE_PROFILES_PATH,
     DEFAULT_PHASE1_CONTEXTS_PATH,
+    DEFAULT_PHASE1_FEATURES_FULL_PATH,
     DEFAULT_PHASE1_FEATURES_PILOT_PATH,
     DEFAULT_PHASE1_FEATURES_PILOT_REFINED_PATH,
     DEFAULT_PHASE1_FEATURES_PILOT_REFINED_V2_PATH,
     DEFAULT_PHASE1_LIMIT,
+    DEFAULT_PHASE1_LLM_QUEUE_HIGH_PATH,
+    DEFAULT_PHASE1_LLM_QUEUE_MEDIUM_PATH,
+    DEFAULT_PHASE1_LLM_QUEUE_SAMPLE_PATH,
     DEFAULT_PHASE1_OBJECT_GRAPH_CANDIDATES_PATH,
     DEFAULT_PHASE1_OBJECT_MENTIONS_PATH,
+    DEFAULT_PHASE1_REPORT_FULL_PATH,
     DEFAULT_PHASE1_REPORT_PILOT_PATH,
     DEFAULT_PHASE1_REPORT_PILOT_REFINED_PATH,
     DEFAULT_PHASE1_REPORT_PILOT_REFINED_V2_PATH,
@@ -1086,6 +1092,18 @@ def screen_phase1(
         Path,
         typer.Option("--out-features", help="Output Phase-1 context feature parquet path."),
     ] = DEFAULT_PHASE1_FEATURES_PILOT_PATH,
+    out_llm_high: Annotated[
+        Path | None,
+        typer.Option("--out-llm-high", help="Output high-priority LLM queue parquet path."),
+    ] = None,
+    out_llm_medium: Annotated[
+        Path | None,
+        typer.Option("--out-llm-medium", help="Output medium-priority LLM queue parquet path."),
+    ] = None,
+    out_llm_sample: Annotated[
+        Path | None,
+        typer.Option("--out-llm-sample", help="Output stratified LLM pilot queue parquet path."),
+    ] = None,
     report: Annotated[
         Path,
         typer.Option("--report", help="Output Phase-1 markdown report path."),
@@ -1095,7 +1113,7 @@ def screen_phase1(
         typer.Option(
             "--limit",
             min=1,
-            help="Maximum context rows to process. Default is the 100000-row pilot.",
+            help="Maximum context rows to process. Omit for full Phase-1 screening.",
         ),
     ] = DEFAULT_PHASE1_LIMIT,
     seed: Annotated[
@@ -1121,11 +1139,29 @@ def screen_phase1(
     try:
         if refined_rules_v2:
             if out_candidates == DEFAULT_PHASE1_CANDIDATES_PILOT_PATH:
-                out_candidates = DEFAULT_PHASE1_CANDIDATES_PILOT_REFINED_V2_PATH
+                out_candidates = (
+                    DEFAULT_PHASE1_CANDIDATES_FULL_PATH
+                    if limit is None
+                    else DEFAULT_PHASE1_CANDIDATES_PILOT_REFINED_V2_PATH
+                )
             if out_features == DEFAULT_PHASE1_FEATURES_PILOT_PATH:
-                out_features = DEFAULT_PHASE1_FEATURES_PILOT_REFINED_V2_PATH
+                out_features = (
+                    DEFAULT_PHASE1_FEATURES_FULL_PATH
+                    if limit is None
+                    else DEFAULT_PHASE1_FEATURES_PILOT_REFINED_V2_PATH
+                )
             if report == DEFAULT_PHASE1_REPORT_PILOT_PATH:
-                report = DEFAULT_PHASE1_REPORT_PILOT_REFINED_V2_PATH
+                report = (
+                    DEFAULT_PHASE1_REPORT_FULL_PATH
+                    if limit is None
+                    else DEFAULT_PHASE1_REPORT_PILOT_REFINED_V2_PATH
+                )
+            if out_llm_high is None:
+                out_llm_high = DEFAULT_PHASE1_LLM_QUEUE_HIGH_PATH
+            if out_llm_medium is None:
+                out_llm_medium = DEFAULT_PHASE1_LLM_QUEUE_MEDIUM_PATH
+            if out_llm_sample is None:
+                out_llm_sample = DEFAULT_PHASE1_LLM_QUEUE_SAMPLE_PATH
         elif refined_rules:
             if out_candidates == DEFAULT_PHASE1_CANDIDATES_PILOT_PATH:
                 out_candidates = DEFAULT_PHASE1_CANDIDATES_PILOT_REFINED_PATH
@@ -1140,6 +1176,9 @@ def screen_phase1(
             cited_title_profiles_path=cited_title_profiles,
             out_candidates_path=out_candidates,
             out_features_path=out_features,
+            out_llm_high_path=out_llm_high,
+            out_llm_medium_path=out_llm_medium,
+            out_llm_sample_path=out_llm_sample,
             report_path=report,
             limit=limit,
             seed=seed,
@@ -1156,7 +1195,8 @@ def screen_phase1(
         f"{metrics['contexts_with_graph_candidate_objects']} had graph candidate objects. "
         f"Flagged {metrics['should_send_to_llm_count']} "
         f"({metrics['should_send_to_llm_rate']:.1%}) for LLM review. "
-        f"Wrote {out_candidates}, {out_features}, and {report}."
+        f"Wrote {out_candidates}, {out_features}, {out_llm_high}, "
+        f"{out_llm_medium}, {out_llm_sample}, and {report}."
     )
 
 

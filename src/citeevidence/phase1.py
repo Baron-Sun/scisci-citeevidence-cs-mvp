@@ -41,10 +41,21 @@ DEFAULT_PHASE1_REPORT_PILOT_REFINED_PATH = Path(
 DEFAULT_PHASE1_REPORT_PILOT_REFINED_V2_PATH = Path(
     "reports/phase1_citation_function_screening_pilot_refined_v2_report.md"
 )
+DEFAULT_PHASE1_CANDIDATES_FULL_PATH = Path(
+    "data/processed/phase1_citation_function_candidates.parquet"
+)
+DEFAULT_PHASE1_FEATURES_FULL_PATH = Path("data/processed/phase1_context_features.parquet")
+DEFAULT_PHASE1_LLM_QUEUE_HIGH_PATH = Path("data/processed/phase1_llm_queue_high.parquet")
+DEFAULT_PHASE1_LLM_QUEUE_MEDIUM_PATH = Path("data/processed/phase1_llm_queue_medium.parquet")
+DEFAULT_PHASE1_LLM_QUEUE_SAMPLE_PATH = Path("data/processed/phase1_llm_queue_sample.parquet")
+DEFAULT_PHASE1_REPORT_FULL_PATH = Path("reports/phase1_citation_function_screening_report.md")
 DEFAULT_PHASE1_LLM_REVIEW_RESULTS_PATH = Path(
     "data/processed/phase1_llm_review_results.parquet"
 )
-DEFAULT_PHASE1_LIMIT = 100_000
+DEFAULT_PHASE1_LLM_REVIEW_V2_RESULTS_PATH = Path(
+    "data/processed/phase1_llm_review_v2_results.parquet"
+)
+DEFAULT_PHASE1_LIMIT: int | None = None
 
 CONTEXT_COLUMNS = [
     "context_id",
@@ -52,6 +63,8 @@ CONTEXT_COLUMNS = [
     "citing_paper_id",
     "resolved_cited_acl_id",
     "resolved_cited_title",
+    "resolved_cited_year",
+    "resolved_cited_authors",
     "normalized_section",
     "raw_section_name",
     "citation_marker",
@@ -783,6 +796,9 @@ def screen_phase1_citation_functions(
     cited_title_profiles_path: str | Path = DEFAULT_PHASE1_CITED_TITLE_PROFILES_PATH,
     out_candidates_path: str | Path = DEFAULT_PHASE1_CANDIDATES_PILOT_PATH,
     out_features_path: str | Path = DEFAULT_PHASE1_FEATURES_PILOT_PATH,
+    out_llm_high_path: str | Path | None = None,
+    out_llm_medium_path: str | Path | None = None,
+    out_llm_sample_path: str | Path | None = None,
     report_path: str | Path = DEFAULT_PHASE1_REPORT_PILOT_PATH,
     limit: int | None = DEFAULT_PHASE1_LIMIT,
     seed: int = 42,
@@ -814,22 +830,23 @@ def screen_phase1_citation_functions(
     )
     baseline_candidates = pd.DataFrame()
     if refined_rules_v2:
-        baseline_candidates = _read_baseline_candidates(
-            Path(baseline_candidates_path),
-            context_ids,
-        )
-        if baseline_candidates.empty:
-            baseline_rows = [
-                _screen_context(
-                    row,
-                    object_features.get(str(row["context_id"]), {}),
-                    refined_rules=True,
-                )
-                for row in contexts.to_dict("records")
-            ]
-            baseline_candidates = _ensure_columns(pd.DataFrame(baseline_rows), OUTPUT_COLUMNS)[
-                OUTPUT_COLUMNS
-            ]
+        if limit is not None:
+            baseline_candidates = _read_baseline_candidates(
+                Path(baseline_candidates_path),
+                context_ids,
+            )
+            if baseline_candidates.empty:
+                baseline_rows = [
+                    _screen_context(
+                        row,
+                        object_features.get(str(row["context_id"]), {}),
+                        refined_rules=True,
+                    )
+                    for row in contexts.to_dict("records")
+                ]
+                baseline_candidates = _ensure_columns(pd.DataFrame(baseline_rows), OUTPUT_COLUMNS)[
+                    OUTPUT_COLUMNS
+                ]
     elif refined_rules:
         baseline_rows = [
             _screen_context(row, object_features.get(str(row["context_id"]), {}))
@@ -859,11 +876,40 @@ def screen_phase1_citation_functions(
     out_features.parent.mkdir(parents=True, exist_ok=True)
     features.to_parquet(out_features, index=False)
 
+    queue_high = candidates.loc[
+        candidates["llm_priority"].eq("high") & candidates["should_send_to_llm"].map(_as_bool)
+    ].copy()
+    queue_medium = candidates.loc[
+        candidates["llm_priority"].eq("medium") & candidates["should_send_to_llm"].map(_as_bool)
+    ].copy()
+    queue_sample = _build_llm_queue_sample(queue_high, queue_medium, seed=seed)
+    if out_llm_high_path is not None:
+        out_llm_high = Path(out_llm_high_path)
+        out_llm_high.parent.mkdir(parents=True, exist_ok=True)
+        queue_high.to_parquet(out_llm_high, index=False)
+    else:
+        out_llm_high = None
+    if out_llm_medium_path is not None:
+        out_llm_medium = Path(out_llm_medium_path)
+        out_llm_medium.parent.mkdir(parents=True, exist_ok=True)
+        queue_medium.to_parquet(out_llm_medium, index=False)
+    else:
+        out_llm_medium = None
+    if out_llm_sample_path is not None:
+        out_llm_sample = Path(out_llm_sample_path)
+        out_llm_sample.parent.mkdir(parents=True, exist_ok=True)
+        queue_sample.to_parquet(out_llm_sample, index=False)
+    else:
+        out_llm_sample = None
+
     metrics = build_phase1_metrics(
         candidates=candidates,
         object_mentions=object_mentions,
         graph_candidates=graph_candidates,
         cited_title_profiles=cited_title_profiles,
+        queue_high=queue_high,
+        queue_medium=queue_medium,
+        queue_sample=queue_sample,
         limit=limit,
         seed=seed,
     )
@@ -873,10 +919,13 @@ def screen_phase1_citation_functions(
             object_mentions=object_mentions,
             graph_candidates=graph_candidates,
             cited_title_profiles=cited_title_profiles,
+            queue_high=pd.DataFrame(),
+            queue_medium=pd.DataFrame(),
+            queue_sample=pd.DataFrame(),
             limit=limit,
             seed=seed,
         )
-        if refined_rules or refined_rules_v2
+        if (refined_rules or refined_rules_v2) and not baseline_candidates.empty
         else None
     )
     report = build_phase1_report(
@@ -884,13 +933,21 @@ def screen_phase1_citation_functions(
         candidates=candidates,
         baseline_metrics=baseline_metrics,
         baseline_candidates=baseline_candidates,
-        llm_review_metrics=_read_llm_review_guidance(Path(llm_review_results_path)),
+        llm_review_metrics=_read_llm_review_guidance(
+            _resolve_llm_review_guidance_path(
+                Path(llm_review_results_path),
+                refined_rules_v2=refined_rules_v2,
+            )
+        ),
         contexts_path=contexts_input,
         object_mentions_path=Path(object_mentions_path),
         object_graph_candidates_path=Path(object_graph_candidates_path),
         cited_title_profiles_path=Path(cited_title_profiles_path),
         out_candidates_path=out_candidates,
         out_features_path=out_features,
+        out_llm_high_path=out_llm_high,
+        out_llm_medium_path=out_llm_medium,
+        out_llm_sample_path=out_llm_sample,
         refined_rules=refined_rules,
         refined_rules_v2=refined_rules_v2,
     )
@@ -906,14 +963,21 @@ def build_phase1_metrics(
     object_mentions: pd.DataFrame,
     graph_candidates: pd.DataFrame,
     cited_title_profiles: pd.DataFrame,
+    queue_high: pd.DataFrame | None = None,
+    queue_medium: pd.DataFrame | None = None,
+    queue_sample: pd.DataFrame | None = None,
     limit: int | None,
     seed: int,
 ) -> dict[str, Any]:
     """Build summary metrics for the Phase-1 screening report."""
     input_count = int(len(candidates))
     send_count = int(candidates["should_send_to_llm"].sum()) if input_count else 0
+    queue_high = candidates.iloc[0:0].copy() if queue_high is None else queue_high
+    queue_medium = candidates.iloc[0:0].copy() if queue_medium is None else queue_medium
+    queue_sample = candidates.iloc[0:0].copy() if queue_sample is None else queue_sample
     return {
         "input_contexts_processed": input_count,
+        "total_contexts_processed": input_count,
         "configured_limit": "full" if limit is None else int(limit),
         "seed": int(seed),
         "contexts_with_object_mentions": int(candidates["has_object_mention"].sum()),
@@ -925,6 +989,10 @@ def build_phase1_metrics(
         "cited_title_profile_input_rows": int(len(cited_title_profiles)),
         "should_send_to_llm_count": send_count,
         "should_send_to_llm_rate": _safe_rate(send_count, input_count),
+        "high_priority_count": int(candidates["llm_priority"].eq("high").sum()),
+        "medium_priority_count": int(candidates["llm_priority"].eq("medium").sum()),
+        "low_priority_count": int(candidates["llm_priority"].eq("low").sum()),
+        "none_priority_count": int(candidates["llm_priority"].eq("none").sum()),
         "llm_priority_distribution": _value_counts(
             candidates,
             ["llm_priority"],
@@ -941,12 +1009,28 @@ def build_phase1_metrics(
             ["primary_candidate_intent"],
             "contexts",
         ),
+        "primary_candidate_intent_by_section": _group_counts(
+            candidates,
+            ["normalized_section", "primary_candidate_intent"],
+            "contexts",
+        ),
+        "primary_candidate_intent_by_llm_priority": _group_counts(
+            candidates,
+            ["llm_priority", "primary_candidate_intent"],
+            "contexts",
+        ),
         "candidate_object_type_distribution": _explode_value_counts(
             candidates,
             "candidate_object_types",
             "object_type",
             "contexts",
         ),
+        "primary_candidate_object_type_distribution": _value_counts(
+            candidates,
+            ["primary_candidate_object_type"],
+            "contexts",
+        ),
+        "object_type_confidence_distribution": _object_type_confidence_distribution(candidates),
         "object_type_source_distribution": _value_counts(
             _ensure_columns(candidates, ["object_type_source"]),
             ["object_type_source"],
@@ -961,6 +1045,11 @@ def build_phase1_metrics(
             "contexts",
         ),
         "evidence_span_support_sanity": _evidence_span_support_sanity(candidates),
+        "phase2_candidate_type_distribution": _value_counts(
+            candidates,
+            ["phase2_candidate_type"],
+            "contexts",
+        ),
         "relation_subtype_distribution": _explode_value_counts(
             candidates,
             "candidate_relation_subtypes",
@@ -984,6 +1073,31 @@ def build_phase1_metrics(
             ["candidate_intent"],
             "contexts",
         ),
+        "llm_queue_stats": _llm_queue_stats(queue_high, queue_medium, queue_sample),
+        "high_queue_by_primary_candidate_intent": _value_counts(
+            queue_high,
+            ["primary_candidate_intent"],
+            "contexts",
+        ),
+        "medium_queue_by_primary_candidate_intent": _value_counts(
+            queue_medium,
+            ["primary_candidate_intent"],
+            "contexts",
+        ),
+        "high_queue_by_normalized_section": _value_counts(
+            queue_high,
+            ["normalized_section"],
+            "contexts",
+            limit=50,
+        ),
+        "medium_queue_by_normalized_section": _value_counts(
+            queue_medium,
+            ["normalized_section"],
+            "contexts",
+            limit=50,
+        ),
+        "high_queue_top_object_names": _top_object_names(queue_high, 50),
+        "medium_queue_top_object_names": _top_object_names(queue_medium, 50),
     }
 
 
@@ -1000,6 +1114,9 @@ def build_phase1_report(
     cited_title_profiles_path: Path,
     out_candidates_path: Path,
     out_features_path: Path,
+    out_llm_high_path: Path | None = None,
+    out_llm_medium_path: Path | None = None,
+    out_llm_sample_path: Path | None = None,
     refined_rules: bool = False,
     refined_rules_v2: bool = False,
 ) -> str:
@@ -1033,9 +1150,16 @@ def build_phase1_report(
                 "metric": "should_send_to_llm_rate",
                 "value": f"{metrics['should_send_to_llm_rate']:.3f}",
             },
+            {"metric": "high_priority_count", "value": metrics["high_priority_count"]},
+            {"metric": "medium_priority_count", "value": metrics["medium_priority_count"]},
+            {"metric": "low_priority_count", "value": metrics["low_priority_count"]},
+            {"metric": "none_priority_count", "value": metrics["none_priority_count"]},
         ]
     )
-    if refined_rules_v2:
+    full_run = metrics["configured_limit"] == "full"
+    if full_run:
+        title = "# Phase-1 Citation-Function Screening Full Report"
+    elif refined_rules_v2:
         title = "# Phase-1 Citation-Function Screening Pilot Refined V2 Report"
     elif refined_rules:
         title = "# Phase-1 Citation-Function Screening Pilot Refined Report"
@@ -1043,6 +1167,11 @@ def build_phase1_report(
         title = "# Phase-1 Citation-Function Screening Pilot Report"
     sections = [
         title,
+        "",
+        (
+            "Phase-1 is a conservative candidate screening layer, "
+            "not final citation-function labeling."
+        ),
         "",
         "## Inputs",
         f"- Contexts: `{contexts_path}`",
@@ -1054,6 +1183,9 @@ def build_phase1_report(
         "## Outputs",
         f"- Candidate rows: `{out_candidates_path}`",
         f"- Feature rows: `{out_features_path}`",
+        f"- High-priority LLM queue: `{out_llm_high_path or ''}`",
+        f"- Medium-priority LLM queue: `{out_llm_medium_path or ''}`",
+        f"- Stratified LLM sample queue: `{out_llm_sample_path or ''}`",
         "",
         "## Core Counts",
         _table(core),
@@ -1092,7 +1224,7 @@ def build_phase1_report(
     if refined_rules_v2:
         sections.extend(
             [
-                "## Task 9A.2 LLM Audit Guidance",
+                "## LLM Audit Guidance",
                 _table(llm_review_metrics if llm_review_metrics is not None else pd.DataFrame()),
                 "",
                 "## Object Type Source Distribution",
@@ -1114,14 +1246,50 @@ def build_phase1_report(
             "## Primary Candidate Intent Distribution",
             _table(metrics["primary_candidate_intent_distribution"]),
             "",
+            "## Primary Candidate Intent By Normalized Section",
+            _table(metrics["primary_candidate_intent_by_section"]),
+            "",
+            "## Primary Candidate Intent By LLM Priority",
+            _table(metrics["primary_candidate_intent_by_llm_priority"]),
+            "",
             "## Candidate Object Type Distribution",
             _table(metrics["candidate_object_type_distribution"]),
+            "",
+            "## Primary Candidate Object Type Distribution",
+            _table(metrics["primary_candidate_object_type_distribution"]),
+            "",
+            "## Object Type Confidence Distribution",
+            _table(metrics["object_type_confidence_distribution"]),
             "",
             "## Relation Subtype Distribution",
             _table(metrics["relation_subtype_distribution"]),
             "",
+            "## Phase2 Candidate Type Distribution",
+            _table(metrics["phase2_candidate_type_distribution"]),
+            "",
             "## LLM Priority Distribution",
             _table(metrics["llm_priority_distribution"]),
+            "",
+            "## LLM Queue Stats",
+            _table(metrics["llm_queue_stats"]),
+            "",
+            "## High Queue By Primary Candidate Intent",
+            _table(metrics["high_queue_by_primary_candidate_intent"]),
+            "",
+            "## Medium Queue By Primary Candidate Intent",
+            _table(metrics["medium_queue_by_primary_candidate_intent"]),
+            "",
+            "## High Queue By Normalized Section",
+            _table(metrics["high_queue_by_normalized_section"]),
+            "",
+            "## Medium Queue By Normalized Section",
+            _table(metrics["medium_queue_by_normalized_section"]),
+            "",
+            "## High Queue Top Object Names",
+            _table(metrics["high_queue_top_object_names"]),
+            "",
+            "## Medium Queue Top Object Names",
+            _table(metrics["medium_queue_top_object_names"]),
             "",
             "## Matched Cue Counts By Group",
             _table(metrics["cue_counts"]),
@@ -1139,28 +1307,34 @@ def build_phase1_report(
             _table(metrics["generic_metric_contexts_by_candidate_intent"]),
             "",
             "## Example Uses",
-            _table(_example_rows(candidates, "uses", 10)),
+            _table(_example_rows(candidates, "uses", 20)),
             "",
             "## Example Compares Against",
-            _table(_example_rows(candidates, "compares_against", 10)),
+            _table(_example_rows(candidates, "compares_against", 20)),
             "",
             "## Example Extends",
-            _table(_example_rows(candidates, "extends", 10)),
+            _table(_example_rows(candidates, "extends", 20)),
             "",
             "## Example Critiques",
-            _table(_example_rows(candidates, "critiques", 10)),
+            _table(_example_rows(candidates, "critiques", 20)),
             "",
             "## Example Applies",
-            _table(_example_rows(candidates, "applies", 10)),
+            _table(_example_rows(candidates, "applies", 20)),
             "",
             "## Example Background",
-            _table(_example_rows(candidates, "background", 10)),
+            _table(_example_rows(candidates, "background", 20)),
+            "",
+            "## Example Unclear",
+            _table(_example_rows(candidates, "unclear", 20)),
             "",
             "## Multiple Candidate Intent Examples",
             _table(_multiple_intent_examples(candidates, 10)),
             "",
             "## Object Mention But Background Intent Examples",
-            _table(_object_background_examples(candidates, 10)),
+            _table(_object_background_examples(candidates, 20)),
+            "",
+            "## Object Mention But Unclear Intent Examples",
+            _table(_object_unclear_examples(candidates, 20)),
             "",
             "## No Cue But Object Mention Examples",
             _table(_no_cue_object_examples(candidates, 10)),
@@ -1226,22 +1400,25 @@ def build_phase1_report(
                 _table(_routing_changed_examples(baseline_candidates, candidates, 10)),
                 "",
                 "## High Priority LLM Examples",
-                _table(_priority_examples(candidates, "high", 10)),
+                _table(_priority_examples(candidates, "high", 20)),
                 "",
                 "## Medium Priority LLM Examples",
-                _table(_priority_examples(candidates, "medium", 10)),
+                _table(_priority_examples(candidates, "medium", 20)),
                 "",
                 "## Cited-Work Description Examples",
-                _table(_cited_work_description_examples(candidates, 10)),
+                _table(_cited_work_description_examples(candidates, 20)),
                 "",
                 "## Current-Paper Use Examples",
-                _table(_current_paper_use_examples(candidates, 10)),
+                _table(_current_paper_use_examples(candidates, 20)),
                 "",
                 "## Current-Paper Extend Examples",
-                _table(_current_paper_extend_examples(candidates, 10)),
+                _table(_current_paper_extend_examples(candidates, 20)),
+                "",
+                "## Current-Paper Extend / Apply Examples",
+                _table(_current_paper_extend_apply_examples(candidates, 20)),
                 "",
                 "## True Compares Against Examples",
-                _table(_true_compare_examples(candidates, 10)),
+                _table(_true_compare_examples(candidates, 20)),
                 "",
             ]
         )
@@ -1832,7 +2009,7 @@ def _read_llm_review_guidance(path: Path) -> pd.DataFrame:
         for intent, group in reviewed.groupby("primary_candidate_intent", dropna=False):
             rows.append(
                 {
-                    "audit_metric": f"task9a2_precision:{intent}",
+                    "audit_metric": f"llm_review_precision:{intent}",
                     "value": round(float(group["intent_correct"].eq("true").mean()), 3),
                 }
             )
@@ -1855,6 +2032,16 @@ def _read_llm_review_guidance(path: Path) -> pd.DataFrame:
                 }
             )
     return pd.DataFrame(rows)
+
+
+def _resolve_llm_review_guidance_path(path: Path, *, refined_rules_v2: bool) -> Path:
+    if (
+        refined_rules_v2
+        and path == DEFAULT_PHASE1_LLM_REVIEW_RESULTS_PATH
+        and DEFAULT_PHASE1_LLM_REVIEW_V2_RESULTS_PATH.exists()
+    ):
+        return DEFAULT_PHASE1_LLM_REVIEW_V2_RESULTS_PATH
+    return path
 
 
 def _read_object_table(path: Path, context_ids: set[str]) -> pd.DataFrame:
@@ -2607,9 +2794,131 @@ def _current_paper_extend_examples(candidates: pd.DataFrame, limit: int) -> pd.D
     return _format_examples(candidates.loc[mask], limit)
 
 
+def _current_paper_extend_apply_examples(candidates: pd.DataFrame, limit: int) -> pd.DataFrame:
+    mask = (
+        candidates["matched_rules"]
+        .fillna("")
+        .astype(str)
+        .str.contains("current_paper_(?:extend|apply)_cue", regex=True)
+    )
+    return _format_examples(candidates.loc[mask], limit)
+
+
 def _true_compare_examples(candidates: pd.DataFrame, limit: int) -> pd.DataFrame:
     mask = candidates["matched_rules"].fillna("").astype(str).str.contains("explicit_compare_cue")
     return _format_examples(candidates.loc[mask], limit)
+
+
+def _object_unclear_examples(candidates: pd.DataFrame, limit: int) -> pd.DataFrame:
+    mask = candidates["has_object_mention"].map(_as_bool) & candidates[
+        "primary_candidate_intent"
+    ].eq("unclear")
+    return _format_examples(candidates.loc[mask], limit)
+
+
+def _build_llm_queue_sample(
+    queue_high: pd.DataFrame,
+    queue_medium: pd.DataFrame,
+    *,
+    seed: int,
+    rows_per_priority: int = 300,
+) -> pd.DataFrame:
+    high = _stratified_queue_sample(
+        queue_high,
+        rows_per_priority,
+        seed=seed,
+        priority="high",
+    )
+    medium = _stratified_queue_sample(
+        queue_medium,
+        rows_per_priority,
+        seed=seed + 1,
+        priority="medium",
+    )
+    if high.empty and medium.empty:
+        columns = list(queue_high.columns) if not queue_high.empty else list(queue_medium.columns)
+        return pd.DataFrame(columns=[*columns, "queue_sample_priority", "queue_sample_bucket"])
+    return pd.concat([high, medium], ignore_index=True)
+
+
+def _stratified_queue_sample(
+    queue: pd.DataFrame,
+    target_rows: int,
+    *,
+    seed: int,
+    priority: str,
+) -> pd.DataFrame:
+    if queue.empty:
+        output = queue.copy()
+        output["queue_sample_priority"] = []
+        output["queue_sample_bucket"] = []
+        return output
+    buckets: list[tuple[str, pd.Series, int]] = []
+    for intent in ["uses", "compares_against", "extends", "critiques", "applies"]:
+        buckets.append(
+            (
+                f"intent_{intent}",
+                queue["primary_candidate_intent"].eq(intent),
+                45 if intent in {"uses", "compares_against"} else 35,
+            )
+        )
+    buckets.extend(
+        [
+            (
+                "object_graph_candidate",
+                queue["has_graph_candidate_object"].map(_as_bool),
+                40,
+            ),
+            (
+                "generic_metric_compare_or_evaluation",
+                queue["generic_metric_names"].fillna("").astype(str).ne("")
+                & queue["matched_rules"]
+                .fillna("")
+                .astype(str)
+                .str.contains("generic_metric|evaluation", regex=True),
+                30,
+            ),
+            (
+                "cited_work_description",
+                queue["cited_work_description"].map(_as_bool),
+                30,
+            ),
+        ]
+    )
+    selected_parts = []
+    selected_ids: set[str] = set()
+    for index, (bucket, mask, quota) in enumerate(buckets):
+        pool = queue.loc[mask & ~queue["context_id"].astype(str).isin(selected_ids)]
+        sample = _deterministic_sample(pool, quota, seed + index)
+        if sample.empty:
+            continue
+        sample = sample.copy()
+        sample["queue_sample_priority"] = priority
+        sample["queue_sample_bucket"] = bucket
+        selected_ids.update(sample["context_id"].astype(str))
+        selected_parts.append(sample)
+    selected = (
+        pd.concat(selected_parts, ignore_index=True)
+        if selected_parts
+        else queue.iloc[0:0].copy()
+    )
+    if len(selected) < target_rows:
+        fill_pool = queue.loc[~queue["context_id"].astype(str).isin(selected_ids)]
+        fill = _deterministic_sample(fill_pool, target_rows - len(selected), seed + 99)
+        if not fill.empty:
+            fill = fill.copy()
+            fill["queue_sample_priority"] = priority
+            fill["queue_sample_bucket"] = "fill"
+            selected = pd.concat([selected, fill], ignore_index=True)
+    return selected.drop_duplicates(subset=["context_id"], keep="first").head(target_rows)
+
+
+def _deterministic_sample(frame: pd.DataFrame, n: int, seed: int) -> pd.DataFrame:
+    if frame.empty or n <= 0:
+        return frame.iloc[0:0].copy()
+    if len(frame) <= n:
+        return frame.sort_values("context_id").copy()
+    return frame.sample(n=n, random_state=seed).sort_values("context_id").copy()
 
 
 def _changed_examples(
@@ -2797,8 +3106,7 @@ def _evidence_span_support_sanity(candidates: pd.DataFrame) -> pd.DataFrame:
         "current_paper_(?:use|extend|apply)_cue",
         regex=True,
     )
-    return pd.DataFrame(
-        [
+    rows = [
             {
                 "check": "rows_with_evidence_span",
                 "rows": int(has_span.sum()),
@@ -2828,7 +3136,90 @@ def _evidence_span_support_sanity(candidates: pd.DataFrame) -> pd.DataFrame:
                 ),
             },
         ]
+    source = _ensure_columns(
+        candidates,
+        [
+            "object_type_source",
+            "primary_candidate_object_type",
+            "has_graph_candidate_object",
+            "has_object_mention",
+        ],
     )
+    source_none = source["object_type_source"].eq("none")
+    none_unknown = source_none & source["primary_candidate_object_type"].eq("unknown")
+    rows.append(
+        {
+            "check": "object_type_source_none_has_unknown_object_type",
+            "rows": int(none_unknown.sum()),
+            "rate": round(
+                _safe_rate(
+                    int(none_unknown.sum()),
+                    int(source_none.sum()),
+                ),
+                3,
+            ),
+        }
+    )
+    metric_source = source["object_type_source"].eq("generic_metric_feature")
+    metric_not_graph = metric_source & ~source["has_graph_candidate_object"].map(_as_bool)
+    rows.append(
+        {
+            "check": "generic_metric_feature_not_graph_evidence",
+            "rows": int(metric_not_graph.sum()),
+            "rate": round(_safe_rate(int(metric_not_graph.sum()), int(metric_source.sum())), 3),
+        }
+    )
+    title_source = source["object_type_source"].eq("cited_title_profile")
+    title_not_direct = (
+        title_source
+        & ~source["has_object_mention"].map(_as_bool)
+        & ~source["has_graph_candidate_object"].map(_as_bool)
+    )
+    rows.append(
+        {
+            "check": "cited_title_profile_not_direct_context_evidence",
+            "rows": int(title_not_direct.sum()),
+            "rate": round(_safe_rate(int(title_not_direct.sum()), int(title_source.sum())), 3),
+        }
+    )
+    return pd.DataFrame(rows)
+
+
+def _object_type_confidence_distribution(candidates: pd.DataFrame) -> pd.DataFrame:
+    if candidates.empty:
+        return pd.DataFrame(columns=["object_type_confidence_bin", "contexts"])
+    frame = _ensure_columns(candidates, ["object_type_confidence"]).copy()
+    scores = pd.to_numeric(frame["object_type_confidence"], errors="coerce").fillna(0)
+    bins = pd.cut(
+        scores,
+        bins=[-0.001, 0, 0.5, 0.8, 0.95, 1.0],
+        labels=["0", "(0,0.5]", "(0.5,0.8]", "(0.8,0.95]", "(0.95,1.0]"],
+    )
+    return (
+        bins.value_counts(sort=False)
+        .rename_axis("object_type_confidence_bin")
+        .reset_index(name="contexts")
+    )
+
+
+def _llm_queue_stats(
+    queue_high: pd.DataFrame,
+    queue_medium: pd.DataFrame,
+    queue_sample: pd.DataFrame,
+) -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {"queue": "high", "rows": int(len(queue_high))},
+            {"queue": "medium", "rows": int(len(queue_medium))},
+            {"queue": "sample", "rows": int(len(queue_sample))},
+        ]
+    )
+
+
+def _top_object_names(frame: pd.DataFrame, limit: int) -> pd.DataFrame:
+    exploded = _explode_values(frame, "object_names", "object_name")
+    exploded = exploded.loc[exploded["object_name"].ne("")]
+    return _group_counts(exploded, ["object_name"], "contexts", limit=limit)
 
 
 def _selected_intent_before_after(
