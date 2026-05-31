@@ -113,6 +113,17 @@ from citeevidence.objects import (
 from citeevidence.objects import (
     DEFAULT_OBJECT_GRAPH_CANDIDATES_PATH as DEFAULT_FULL_OBJECT_GRAPH_CANDIDATES_PATH,
 )
+from citeevidence.phase1 import (
+    DEFAULT_PHASE1_CANDIDATES_PILOT_PATH,
+    DEFAULT_PHASE1_CITED_TITLE_PROFILES_PATH,
+    DEFAULT_PHASE1_CONTEXTS_PATH,
+    DEFAULT_PHASE1_FEATURES_PILOT_PATH,
+    DEFAULT_PHASE1_LIMIT,
+    DEFAULT_PHASE1_OBJECT_GRAPH_CANDIDATES_PATH,
+    DEFAULT_PHASE1_OBJECT_MENTIONS_PATH,
+    DEFAULT_PHASE1_REPORT_PILOT_PATH,
+    screen_phase1_citation_functions,
+)
 from citeevidence.review import (
     DEFAULT_MANUAL_REVIEW_CLEAN_PATH,
     DEFAULT_MANUAL_REVIEW_NEEDS_CHECK_PATH,
@@ -133,6 +144,10 @@ datasets_app = typer.Typer(
     no_args_is_help=True,
 )
 objects_app = typer.Typer(help="Match registered NLP objects in contexts.", no_args_is_help=True)
+phase1_app = typer.Typer(
+    help="Screen citation-function candidates with rule-based Phase-1 cues.",
+    no_args_is_help=True,
+)
 review_app = typer.Typer(
     help="Ingest review files and run model-based audits.",
     no_args_is_help=True,
@@ -148,6 +163,7 @@ app.add_typer(config_app, name="config")
 app.add_typer(contexts_app, name="contexts")
 app.add_typer(datasets_app, name="datasets")
 app.add_typer(objects_app, name="objects")
+app.add_typer(phase1_app, name="phase1")
 app.add_typer(review_app, name="review")
 
 
@@ -916,6 +932,82 @@ def review_llm_objects(
         f"Prepared {metrics['sample_rows']} object mention review rows; "
         f"{completed_rows} {mode}. "
         f"Wrote {sample_out}, {jsonl_out}, {parquet_out}, and {report}."
+    )
+
+
+@phase1_app.command("screen")
+def screen_phase1(
+    contexts: Annotated[
+        Path,
+        typer.Option("--contexts", help="Path to analysis_ready_strong_contexts.parquet."),
+    ] = DEFAULT_PHASE1_CONTEXTS_PATH,
+    object_mentions: Annotated[
+        Path,
+        typer.Option("--object-mentions", help="Path to object_mentions.parquet."),
+    ] = DEFAULT_PHASE1_OBJECT_MENTIONS_PATH,
+    object_graph_candidates: Annotated[
+        Path,
+        typer.Option(
+            "--object-graph-candidates",
+            help="Path to object_graph_candidate_mentions.parquet.",
+        ),
+    ] = DEFAULT_PHASE1_OBJECT_GRAPH_CANDIDATES_PATH,
+    cited_title_profiles: Annotated[
+        Path,
+        typer.Option(
+            "--cited-title-profiles",
+            help="Path to cited_title_object_profiles.parquet.",
+        ),
+    ] = DEFAULT_PHASE1_CITED_TITLE_PROFILES_PATH,
+    out_candidates: Annotated[
+        Path,
+        typer.Option("--out-candidates", help="Output Phase-1 candidate parquet path."),
+    ] = DEFAULT_PHASE1_CANDIDATES_PILOT_PATH,
+    out_features: Annotated[
+        Path,
+        typer.Option("--out-features", help="Output Phase-1 context feature parquet path."),
+    ] = DEFAULT_PHASE1_FEATURES_PILOT_PATH,
+    report: Annotated[
+        Path,
+        typer.Option("--report", help="Output Phase-1 markdown report path."),
+    ] = DEFAULT_PHASE1_REPORT_PILOT_PATH,
+    limit: Annotated[
+        int | None,
+        typer.Option(
+            "--limit",
+            min=1,
+            help="Maximum context rows to process. Default is the 100000-row pilot.",
+        ),
+    ] = DEFAULT_PHASE1_LIMIT,
+    seed: Annotated[
+        int,
+        typer.Option("--seed", help="Deterministic report/sample seed."),
+    ] = 42,
+) -> None:
+    """Run rule-based Phase-1 citation-function candidate screening."""
+    try:
+        metrics = screen_phase1_citation_functions(
+            contexts_path=contexts,
+            object_mentions_path=object_mentions,
+            object_graph_candidates_path=object_graph_candidates,
+            cited_title_profiles_path=cited_title_profiles,
+            out_candidates_path=out_candidates,
+            out_features_path=out_features,
+            report_path=report,
+            limit=limit,
+            seed=seed,
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        error_console.print(f"[red]Failed to run Phase-1 screening:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    console.print(
+        f"Processed {metrics['input_contexts_processed']} contexts; "
+        f"{metrics['contexts_with_object_mentions']} had object mentions and "
+        f"{metrics['contexts_with_graph_candidate_objects']} had graph candidate objects. "
+        f"Flagged {metrics['should_send_to_llm_count']} "
+        f"({metrics['should_send_to_llm_rate']:.1%}) for LLM review. "
+        f"Wrote {out_candidates}, {out_features}, and {report}."
     )
 
 
