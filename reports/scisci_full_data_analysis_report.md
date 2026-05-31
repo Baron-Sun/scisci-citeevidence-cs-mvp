@@ -5,13 +5,13 @@ This report uses deterministic full-data Phase-1 candidates and object matches. 
 ## Evidence Funnel
 | step                                |   count |   retention_from_previous |   retention_from_first |
 |:------------------------------------|--------:|--------------------------:|-----------------------:|
-| section_aware_citation_contexts     | 1990689 |                1          |            1           |
-| resolved_citation_marker_components | 3152073 |                1.58341    |            1.58341     |
-| analysis_ready_strong_contexts      | 1184634 |                0.375827   |            0.595087    |
-| object_mentions                     |  404228 |                0.341226   |            0.203059    |
-| object_graph_candidate_mentions     |  322688 |                0.798282   |            0.162099    |
-| phase1_llm_candidate_contexts       |  306231 |                0.949      |            0.153832    |
-| phase2_valid_structured_labels      |     582 |                0.00190053 |            0.000292361 |
+| section_aware_citation_contexts     | 1990689 |                  1        |               1        |
+| resolved_citation_marker_components | 3152073 |                  1.58341  |               1.58341  |
+| analysis_ready_strong_contexts      | 1184634 |                  0.375827 |               0.595087 |
+| object_mentions                     |  404228 |                  0.341226 |               0.203059 |
+| object_graph_candidate_mentions     |  322688 |                  0.798282 |               0.162099 |
+| phase1_llm_candidate_contexts       |  306231 |                  0.949    |               0.153832 |
+| phase2_valid_structured_labels      |  236755 |                  0.773126 |               0.118931 |
 
 ## Optional Input Coverage
 | input                          |    rows |
@@ -57,74 +57,84 @@ This report uses deterministic full-data Phase-1 candidates and object matches. 
 | OPUS                | software_or_tool      |         6 |          230 |                 22 |           5 |         1 |       680 |    263 |    1207 |
 
 ## Top Phase-2 Pilot Object-Function Matrix
-| canonical_name      | object_type           |   applies |   background |   compares_against |   critiques |   extends |   unclear |   uses |   total |
-|:--------------------|:----------------------|----------:|-------------:|-------------------:|------------:|----------:|----------:|-------:|--------:|
-| unknown             | unknown               |         1 |           15 |                 25 |          16 |        11 |         1 |      4 |      73 |
-| method              | method                |        16 |            1 |                 11 |           2 |        16 |         0 |      9 |      55 |
-| accuracy            | metric                |         1 |           20 |                 24 |           0 |         2 |         0 |      0 |      47 |
-| BERT                | model                 |         1 |           12 |                 11 |           4 |         1 |         0 |     17 |      46 |
-| BLEU                | metric                |         2 |            3 |                 11 |           5 |         1 |         0 |     15 |      37 |
-| model               | model                 |         3 |            4 |                 11 |           1 |         9 |         0 |      7 |      35 |
-| LSTM                | model                 |         0 |            6 |                  9 |           5 |         4 |         0 |      7 |      31 |
-| Transformer         | model                 |         1 |           11 |                  4 |           1 |         2 |         0 |      5 |      24 |
-| CRF                 | method                |         1 |            5 |                  6 |           0 |         4 |         0 |      5 |      21 |
-| seq2seq             | model                 |         0 |            7 |                  3 |           6 |         2 |         0 |      3 |      21 |
-| software_or_tool    | software_or_tool      |         8 |            0 |                  0 |           0 |         3 |         0 |     10 |      21 |
-| dataset_or_database | dataset_or_database   |         1 |            1 |                  4 |           1 |         1 |         0 |     12 |      20 |
-| claim_or_finding    | claim_or_finding      |         0 |            3 |                  8 |           5 |         2 |         0 |      1 |      19 |
-| ROUGE               | metric                |         0 |            0 |                  2 |           3 |         0 |         0 |      9 |      14 |
-| GloVe               | model                 |         0 |            2 |                  5 |           0 |         0 |         0 |      7 |      14 |
-| Penn Treebank       | dataset_or_database   |         1 |            5 |                  1 |           0 |         1 |         0 |      5 |      13 |
-| WordNet             | dataset_or_database   |         0 |            7 |                  2 |           2 |         0 |         0 |      2 |      13 |
-| word2vec            | model                 |         0 |            3 |                  0 |           1 |         1 |         0 |      6 |      11 |
-| attention mechanism | method                |         1 |            7 |                  1 |           0 |         1 |         0 |      0 |      10 |
-| WMT                 | benchmark_or_protocol |         2 |            2 |                  3 |           0 |         1 |         0 |      2 |      10 |
-| theory_or_concept   | theory_or_concept     |         0 |            2 |                  1 |           1 |         0 |         0 |      4 |       8 |
-| ELMo                | model                 |         0 |            3 |                  4 |           0 |         0 |         0 |      1 |       8 |
-| F1                  | metric                |         0 |            3 |                  5 |           0 |         0 |         0 |      0 |       8 |
-| METEOR              | metric                |         0 |            1 |                  2 |           3 |         0 |         0 |      1 |       7 |
-| SemEval             | benchmark_or_protocol |         0 |            3 |                  0 |           0 |         0 |         0 |      4 |       7 |
-| task                | task                  |         2 |            3 |                  2 |           0 |         0 |         0 |      0 |       7 |
-| Moses               | software_or_tool      |         0 |            0 |                  0 |           0 |         0 |         0 |      6 |       6 |
-| metric              | metric                |         0 |            0 |                  1 |           2 |         0 |         0 |      3 |       6 |
-| GIZA++              | software_or_tool      |         0 |            1 |                  0 |           0 |         0 |         0 |      4 |       5 |
-| HMM                 | method                |         0 |            2 |                  1 |           1 |         0 |         0 |      1 |       5 |
+| canonical_name        | object_type           |   applies |   background |   compares_against |   critiques |   extends |   unclear |   uses |   total |
+|:----------------------|:----------------------|----------:|-------------:|-------------------:|------------:|----------:|----------:|-------:|--------:|
+| BERT                  | model                 |        74 |        19752 |               2338 |         225 |       504 |       122 |   3326 |   26341 |
+| method                | method                |       413 |         1331 |               2918 |        1149 |      1143 |         0 |  12091 |   19045 |
+| LSTM                  | model                 |        43 |        14367 |               1589 |         130 |       348 |        72 |   1743 |   18292 |
+| BLEU                  | metric                |        38 |        10862 |               1617 |         377 |       170 |        92 |   3020 |   16176 |
+| Transformer           | model                 |        32 |        12325 |                913 |         149 |       269 |        58 |   1764 |   15510 |
+| CRF                   | method                |        22 |        10485 |                750 |          69 |       254 |        21 |    970 |   12571 |
+| WordNet               | dataset_or_database   |        18 |        10798 |                415 |         114 |       185 |        22 |    790 |   12342 |
+| accuracy              | metric                |        28 |         9578 |               1660 |         127 |       262 |        29 |    538 |   12222 |
+| seq2seq               | model                 |        17 |         9730 |                654 |         132 |       217 |        16 |    588 |   11354 |
+| dataset_or_database   | dataset_or_database   |        81 |          450 |                502 |         251 |       117 |         0 |   7065 |    8466 |
+| SemEval               | benchmark_or_protocol |        14 |         7271 |                404 |          24 |        72 |         8 |    611 |    8404 |
+| attention mechanism   | method                |        11 |         7235 |                295 |          80 |       165 |        11 |    382 |    8179 |
+| unknown               | unknown               |         3 |          524 |               4968 |        1419 |       125 |         1 |    397 |    7437 |
+| Penn Treebank         | dataset_or_database   |        28 |         4548 |                235 |          39 |        59 |         8 |    964 |    5881 |
+| HMM                   | method                |         6 |         4941 |                292 |          59 |       115 |        18 |    406 |    5837 |
+| ROUGE                 | metric                |         7 |         4037 |                393 |         159 |        37 |        19 |   1053 |    5705 |
+| model                 | model                 |        40 |         1499 |               2062 |         282 |       146 |         0 |   1641 |    5670 |
+| GloVe                 | model                 |         7 |         2992 |                483 |          34 |        77 |        22 |   1942 |    5557 |
+| word2vec              | model                 |         3 |         3747 |                322 |          24 |        74 |        21 |    710 |    4901 |
+| ELMo                  | model                 |        11 |         3158 |                311 |          33 |        84 |        15 |    451 |    4063 |
+| software_or_tool      | software_or_tool      |        61 |           22 |                207 |          28 |        51 |         0 |   3669 |    4038 |
+| Moses                 | software_or_tool      |        15 |         1464 |                369 |          16 |        35 |         9 |   1859 |    3767 |
+| SQuAD                 | dataset_or_database   |        14 |         2710 |                236 |          28 |        33 |        16 |    436 |    3473 |
+| WMT                   | benchmark_or_protocol |         7 |         2460 |                270 |          15 |        54 |        13 |    622 |    3441 |
+| FrameNet              | dataset_or_database   |        13 |         3164 |                 54 |          15 |        43 |         3 |    148 |    3440 |
+| F1                    | metric                |        10 |         2087 |                865 |          13 |        98 |        12 |    317 |    3402 |
+| METEOR                | metric                |         5 |         2311 |                267 |          76 |        30 |        11 |    645 |    3345 |
+| PropBank              | dataset_or_database   |         7 |         2456 |                 58 |           9 |        31 |         2 |    169 |    2732 |
+| benchmark_or_protocol | benchmark_or_protocol |        17 |          151 |               1382 |          57 |        19 |         0 |   1052 |    2678 |
+| GIZA++                | software_or_tool      |         5 |         1287 |                217 |          16 |        34 |         5 |   1021 |    2585 |
 
 ## Phase-1 To Phase-2 Correction Flow
 | source           | target           |   rows |   rate_within_source |
 |:-----------------|:-----------------|-------:|---------------------:|
-| applies          | applies          |     37 |           0.560606   |
-| applies          | uses             |     13 |           0.19697    |
-| applies          | compares_against |     11 |           0.166667   |
-| applies          | background       |      4 |           0.0606061  |
-| applies          | critiques        |      1 |           0.0151515  |
-| background       | background       |     64 |           0.864865   |
-| background       | compares_against |      7 |           0.0945946  |
-| background       | critiques        |      2 |           0.027027   |
-| background       | extends          |      1 |           0.0135135  |
-| compares_against | compares_against |    113 |           0.869231   |
-| compares_against | background       |     14 |           0.107692   |
-| compares_against | uses             |      2 |           0.0153846  |
-| compares_against | critiques        |      1 |           0.00769231 |
-| critiques        | critiques        |     49 |           0.662162   |
-| critiques        | background       |     15 |           0.202703   |
-| critiques        | compares_against |      9 |           0.121622   |
-| critiques        | extends          |      1 |           0.0135135  |
-| extends          | extends          |     60 |           0.882353   |
-| extends          | background       |      3 |           0.0441176  |
-| extends          | compares_against |      2 |           0.0294118  |
-| extends          | applies          |      1 |           0.0147059  |
-| extends          | unclear          |      1 |           0.0147059  |
-| extends          | uses             |      1 |           0.0147059  |
-| unclear          | background       |     11 |           0.52381    |
-| unclear          | compares_against |      4 |           0.190476   |
-| unclear          | uses             |      4 |           0.190476   |
-| unclear          | applies          |      1 |           0.047619   |
-| unclear          | extends          |      1 |           0.047619   |
-| uses             | uses             |    126 |           0.845638   |
-| uses             | background       |     14 |           0.0939597  |
-| uses             | compares_against |      7 |           0.0469799  |
-| uses             | applies          |      2 |           0.0134228  |
+| applies          | applies          |   1040 |          0.625752    |
+| applies          | uses             |    572 |          0.344164    |
+| applies          | compares_against |     24 |          0.0144404   |
+| applies          | background       |     22 |          0.0132371   |
+| applies          | extends          |      4 |          0.00240674  |
+| background       | background       | 102890 |          0.968176    |
+| background       | compares_against |   1590 |          0.0149616   |
+| background       | extends          |    957 |          0.00900519  |
+| background       | uses             |    680 |          0.00639868  |
+| background       | critiques        |    131 |          0.00123269  |
+| background       | applies          |     24 |          0.000225836 |
+| compares_against | compares_against |  21225 |          0.90841     |
+| compares_against | background       |   1801 |          0.0770811   |
+| compares_against | uses             |    242 |          0.0103574   |
+| compares_against | extends          |     75 |          0.00320993  |
+| compares_against | critiques        |     18 |          0.000770383 |
+| compares_against | applies          |      4 |          0.000171196 |
+| critiques        | critiques        |   5897 |          0.883181    |
+| critiques        | background       |    576 |          0.0862663   |
+| critiques        | compares_against |    127 |          0.0190205   |
+| critiques        | extends          |     39 |          0.00584095  |
+| critiques        | uses             |     36 |          0.00539164  |
+| critiques        | applies          |      1 |          0.000149768 |
+| critiques        | unclear          |      1 |          0.000149768 |
+| extends          | extends          |   1895 |          0.977812    |
+| extends          | compares_against |     24 |          0.0123839   |
+| extends          | background       |     13 |          0.00670795  |
+| extends          | uses             |      4 |          0.00206398  |
+| extends          | applies          |      2 |          0.00103199  |
+| unclear          | background       |  38915 |          0.765862    |
+| unclear          | uses             |   5624 |          0.110683    |
+| unclear          | compares_against |   3723 |          0.0732701   |
+| unclear          | extends          |   1526 |          0.0300323   |
+| unclear          | unclear          |    598 |          0.0117689   |
+| unclear          | critiques        |    350 |          0.00688814  |
+| unclear          | applies          |     76 |          0.00149571  |
+| uses             | uses             |  43335 |          0.941472    |
+| uses             | background       |   1761 |          0.0382585   |
+| uses             | compares_against |    642 |          0.0139477   |
+| uses             | extends          |    272 |          0.00590932  |
+| uses             | critiques        |     14 |          0.000304156 |
+| uses             | applies          |      5 |          0.000108627 |
 
 ## Section Function Rates
 | normalized_section   | primary_candidate_intent   |   rows |   section_total |   rate_within_section | is_known_section   |

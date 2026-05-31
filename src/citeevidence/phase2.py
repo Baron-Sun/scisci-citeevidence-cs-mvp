@@ -737,11 +737,20 @@ def collect_phase2_batch_results(
     }
     result_records: list[dict[str, Any]] = []
     failed_records: list[dict[str, Any]] = []
+    seen_custom_ids: set[str] = set()
+    batch_output_usage = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+    batch_output_lines = 0
     for output_path in output_paths:
         batch_id = output_path.get("batch_id", "")
         for line in Path(output_path["path"]).read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue
+            payload = json.loads(line)
+            batch_output_lines += 1
+            _add_usage(batch_output_usage, _usage_from_batch_payload(payload))
+            custom_id = _clean(payload.get("custom_id"))
+            if custom_id:
+                seen_custom_ids.add(custom_id)
             record, failed = parse_phase2_batch_output_line(
                 line,
                 queue_by_custom_id=queue_by_custom_id,
@@ -752,6 +761,20 @@ def collect_phase2_batch_results(
                 result_records.append(record)
             if failed is not None:
                 failed_records.append(failed)
+    missing_custom_ids = sorted(set(queue_by_custom_id) - seen_custom_ids)
+    for custom_id in missing_custom_ids:
+        failed = _phase2_failed_record(
+            row=queue_by_custom_id[custom_id],
+            model=manifest.get("model", DEFAULT_OPENAI_REVIEW_MODEL),
+            validation_error=(
+                "missing_batch_output: custom_id not present in downloaded output files"
+            ),
+            raw_response="",
+            attempts=0,
+        )
+        failed["batch_custom_id"] = custom_id
+        failed["batch_id"] = ""
+        failed_records.append(failed)
     results = _normalize_phase2_result_frame(pd.DataFrame(result_records))
     failed = pd.DataFrame(failed_records)
     labels_out = Path(out_labels_path)
@@ -770,6 +793,14 @@ def collect_phase2_batch_results(
         dry_run_prompt_records=0,
     )
     metrics["batch_output_files"] = output_paths
+    metrics["missing_batch_output_rows"] = len(missing_custom_ids)
+    metrics["batch_output_lines"] = batch_output_lines
+    metrics["batch_output_token_usage"] = batch_output_usage
+    metrics["estimated_batch_output_cost_usd"] = _estimated_batch_cost(
+        model=manifest.get("model", DEFAULT_OPENAI_REVIEW_MODEL),
+        input_tokens=batch_output_usage["input_tokens"],
+        output_tokens=batch_output_usage["output_tokens"],
+    )
     report_out.write_text(
         build_phase2_batch_run_report(
             metrics=metrics,
@@ -1188,6 +1219,14 @@ def build_phase2_batch_run_report(
             {"metric": "processed_rows", "value": metrics["processed_rows"]},
             {"metric": "successful_rows", "value": metrics["successful_rows"]},
             {"metric": "failed_rows", "value": metrics["failed_rows"]},
+            {
+                "metric": "missing_batch_output_rows",
+                "value": metrics.get("missing_batch_output_rows", 0),
+            },
+            {
+                "metric": "batch_output_lines",
+                "value": metrics.get("batch_output_lines", 0),
+            },
             {"metric": "abstain_count", "value": metrics["abstain_count"]},
             {"metric": "abstain_rate", "value": f"{metrics['abstain_rate']:.3f}"},
             {
@@ -1197,6 +1236,22 @@ def build_phase2_batch_run_report(
             {"metric": "input_tokens", "value": metrics["token_usage"]["input_tokens"]},
             {"metric": "output_tokens", "value": metrics["token_usage"]["output_tokens"]},
             {"metric": "total_tokens", "value": metrics["token_usage"]["total_tokens"]},
+            {
+                "metric": "batch_output_input_tokens",
+                "value": metrics.get("batch_output_token_usage", {}).get("input_tokens", 0),
+            },
+            {
+                "metric": "batch_output_output_tokens",
+                "value": metrics.get("batch_output_token_usage", {}).get("output_tokens", 0),
+            },
+            {
+                "metric": "batch_output_total_tokens",
+                "value": metrics.get("batch_output_token_usage", {}).get("total_tokens", 0),
+            },
+            {
+                "metric": "estimated_batch_output_cost_usd",
+                "value": _format_optional_cost(metrics.get("estimated_batch_output_cost_usd")),
+            },
         ]
     )
     return "\n".join(
@@ -2673,6 +2728,30 @@ def _batch_usage_to_dict(usage: Any) -> dict[str, int | None]:
         "output_tokens": usage.get("output_tokens") or usage.get("completion_tokens"),
         "total_tokens": usage.get("total_tokens"),
     }
+
+
+def _usage_from_batch_payload(payload: dict[str, Any]) -> dict[str, int | None]:
+    body = (payload.get("response") or {}).get("body") or {}
+    return _batch_usage_to_dict(body.get("usage"))
+
+
+def _add_usage(total: dict[str, int], usage: dict[str, int | None]) -> None:
+    for key in ("input_tokens", "output_tokens", "total_tokens"):
+        total[key] += int(usage.get(key) or 0)
+
+
+def _estimated_batch_cost(
+    *,
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+) -> float | None:
+    price = PHASE2_BATCH_PRICE_PER_MILLION.get(model)
+    if price is None:
+        return None
+    return (input_tokens / 1_000_000 * price["input"]) + (
+        output_tokens / 1_000_000 * price["output"]
+    )
 
 
 def _format_optional_cost(value: Any) -> str:

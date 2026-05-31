@@ -195,6 +195,43 @@ def test_collect_batch_parses_valid_and_failed_rows(tmp_path: Path) -> None:
     assert "evidence_span" in failed_lines[0]
 
 
+def test_collect_batch_records_missing_output_rows(tmp_path: Path) -> None:
+    queue_path = tmp_path / "queue.parquet"
+    output_path = tmp_path / "batch_output.jsonl"
+    manifest_path = tmp_path / "manifest.json"
+    _queue_rows().to_parquet(queue_path, index=False)
+    output_path.write_text(_valid_batch_line() + "\n", encoding="utf-8")
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "model": "gpt-5.4-mini",
+                "prompt_version": "phase2_test",
+                "request_files": [
+                    {
+                        "path": str(tmp_path / "requests.jsonl"),
+                        "batch_id": "batch_1",
+                        "output_path": str(output_path),
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    metrics = collect_phase2_batch_results(
+        manifest_path=manifest_path,
+        queue_paths=[queue_path],
+        out_labels_path=tmp_path / "labels.parquet",
+        out_failed_path=tmp_path / "failed.jsonl",
+        report_path=tmp_path / "report.md",
+    )
+
+    failed_text = (tmp_path / "failed.jsonl").read_text(encoding="utf-8")
+    assert metrics["processed_rows"] == 2
+    assert metrics["missing_batch_output_rows"] == 1
+    assert "missing_batch_output" in failed_text
+
+
 def test_cost_estimate_uses_pilot_averages(tmp_path: Path) -> None:
     queue_path = tmp_path / "queue.parquet"
     pilot_path = tmp_path / "pilot.parquet"

@@ -1,21 +1,21 @@
 canonical_name,object_type,evidence_backed_edge_count,distinct_contexts,mean_confidence
-BERT,model,51,51,0.9127450980392157
-BLEU,metric,38,38,0.9210526315789473
-LSTM,model,35,35,0.9128571428571428
-Transformer,model,22,22,0.8954545454545454
-CRF,method,21,21,0.9238095238095237
-seq2seq,model,17,17,0.9088235294117647
-Penn Treebank,dataset_or_database,14,14,0.8985714285714286
-word2vec,model,14,14,0.905
-GloVe,model,13,13,0.9269230769230768
-WordNet,dataset_or_database,13,13,0.8730769230769231
-ROUGE,metric,13,13,0.9307692307692308
-METEOR,metric,10,10,0.9199999999999999
-attention mechanism,method,10,10,0.9
-WMT,benchmark_or_protocol,10,10,0.915
-ELMo,model,9,9,0.911111111111111
-Moses,software_or_tool,8,8,0.91875
-SemEval,benchmark_or_protocol,8,8,0.90625
-Stanford CoreNLP,software_or_tool,5,5,0.9
-GIZA++,software_or_tool,5,5,0.9400000000000001
-OntoNotes,dataset_or_database,5,5,0.9
+BERT,model,27240,27240,0.8880884728340676
+LSTM,model,18129,18129,0.887345689227205
+BLEU,metric,15750,15750,0.8976114285714285
+Transformer,model,14082,14082,0.8825294702457038
+CRF,method,12714,12714,0.8883671543180747
+WordNet,dataset_or_database,12061,12061,0.8642409418787829
+seq2seq,model,8649,8649,0.8896253902185224
+attention mechanism,method,8486,8486,0.8784998821588499
+SemEval,benchmark_or_protocol,8294,8294,0.8867241379310344
+HMM,method,5899,5899,0.8881013731140871
+GloVe,model,5835,5835,0.9112202227934876
+Penn Treebank,dataset_or_database,5810,5810,0.8785387263339072
+ROUGE,metric,5713,5713,0.902464554524768
+word2vec,model,4684,4684,0.8903394534585825
+ELMo,model,4240,4240,0.893443396226415
+Moses,software_or_tool,3740,3740,0.9159705882352941
+FrameNet,dataset_or_database,3705,3705,0.8735519568151148
+METEOR,metric,3618,3618,0.909469320066335
+SQuAD,dataset_or_database,3431,3431,0.8907140775284174
+WMT,benchmark_or_protocol,3327,3327,0.8830868650435829
