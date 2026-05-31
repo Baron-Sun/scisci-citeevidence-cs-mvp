@@ -35,6 +35,18 @@ FORBIDDEN_CLAIMS = {
     "slash_citation_context_volume": "citation/context volume",
 }
 
+_ALLOWED_NEGATED_CAVEAT_PATTERNS = [
+    re.compile(
+        r"\bnot\s+a\s+complete\s+nlp\s+method\s+evolution\s+graph\s+"
+        r"or\s+intern-atlas-scale\s+graph\b"
+    ),
+    re.compile(r"\bnot\s+an\s+intern-atlas-scale\s+method\s+evolution\s+graph\b"),
+    re.compile(r"\bnot\s+intern-atlas-scale(?:\s+graph)?\b"),
+]
+_LOCAL_NEGATION_PREFIX = re.compile(
+    r"(?:^|[\s(,;:])(?:not|no|never|do not|don't)\s+(?:(?:a|an|the)\s+)?$"
+)
+
 
 def validate_required_caveats(text: str) -> list[str]:
     """Return required caveat identifiers whose meaning is missing from text."""
@@ -131,10 +143,20 @@ def _has_not_method_evolution_graph_caveat(text: str) -> bool:
 
 def _contains_unqualified_phrase(text: str, phrase: str) -> bool:
     for match in re.finditer(re.escape(phrase), text):
-        prefix = text[max(0, match.start() - 96) : match.start()]
-        if any(marker in prefix for marker in ["not ", "no ", "never ", "do not ", "don't "]):
+        if _is_allowed_negated_caveat(text, match.start(), match.end()):
+            continue
+        prefix = text[max(0, match.start() - 24) : match.start()]
+        if _LOCAL_NEGATION_PREFIX.search(prefix):
             continue
         return True
+    return False
+
+
+def _is_allowed_negated_caveat(text: str, start: int, end: int) -> bool:
+    for pattern in _ALLOWED_NEGATED_CAVEAT_PATTERNS:
+        for match in pattern.finditer(text):
+            if match.start() <= start and end <= match.end():
+                return True
     return False
 
 

@@ -53,9 +53,42 @@ def test_negated_intern_atlas_scale_caveat_is_allowed() -> None:
 
     assert "intern_atlas_scale_graph" not in validate_forbidden_claims(text)
     assert "complete_method_evolution_graph" not in validate_forbidden_claims(text)
+    assert "intern_atlas_scale_graph" not in validate_forbidden_claims(
+        "Current outputs are not Intern-Atlas-scale graph."
+    )
     assert "intern_atlas_scale_graph" in validate_forbidden_claims(
         "The project builds an Intern-Atlas-scale graph."
     )
+
+
+def test_unrelated_earlier_not_does_not_suppress_later_forbidden_claims() -> None:
+    examples = [
+        (
+            "This is not a final QA result. The project builds an Intern-Atlas-scale graph.",
+            "intern_atlas_scale_graph",
+        ),
+        (
+            "This is not a full data audit, but the project builds an "
+            "Intern-Atlas-scale graph.",
+            "intern_atlas_scale_graph",
+        ),
+        (
+            "The object graph is not complete yet. It is an Intern-Atlas-scale graph.",
+            "intern_atlas_scale_graph",
+        ),
+        (
+            "This is not a final QA result. This is a complete NLP method evolution graph.",
+            "complete_method_evolution_graph",
+        ),
+        (
+            "This is not a full data audit, but this is a complete NLP method "
+            "evolution graph.",
+            "complete_method_evolution_graph",
+        ),
+    ]
+
+    for text, expected in examples:
+        assert expected in validate_forbidden_claims(text)
 
 
 def test_citation_context_volume_terms() -> None:
