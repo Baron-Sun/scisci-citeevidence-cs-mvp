@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import random
+import time
 from pathlib import Path
 from typing import Any, Literal
 
@@ -29,6 +31,9 @@ DEFAULT_PHASE2_STRUCTURED_PARQUET_PATH = Path(
 )
 DEFAULT_PHASE2_STRUCTURED_FAILED_PATH = Path(
     "data/processed/phase2_structured_labels_failed.jsonl"
+)
+DEFAULT_PHASE2_DRY_RUN_PROMPTS_PATH = Path(
+    "data/processed/phase2_structured_prompts_dryrun.jsonl"
 )
 DEFAULT_PHASE2_STRUCTURED_REPORT = Path(
     "reports/phase2_structured_extraction_pilot_report.md"
@@ -242,6 +247,7 @@ def run_phase2_structured_extraction(
     jsonl_out: str | Path = DEFAULT_PHASE2_STRUCTURED_JSONL_PATH,
     parquet_out: str | Path = DEFAULT_PHASE2_STRUCTURED_PARQUET_PATH,
     failed_out: str | Path = DEFAULT_PHASE2_STRUCTURED_FAILED_PATH,
+    dry_run_prompts_out: str | Path = DEFAULT_PHASE2_DRY_RUN_PROMPTS_PATH,
     report_path: str | Path = DEFAULT_PHASE2_STRUCTURED_REPORT,
     review_sample_out: str | Path = DEFAULT_PHASE2_REVIEW_SAMPLE_PATH,
     cache_dir: str | Path = DEFAULT_PHASE2_CACHE_DIR,
@@ -270,10 +276,22 @@ def run_phase2_structured_extraction(
     queue = _read_parquet_with_columns(Path(queue_path), _queue_columns())
     candidates = _read_parquet_with_columns(Path(candidates_path), _candidate_fill_columns())
     contexts = _read_parquet_with_columns(Path(contexts_path), _context_fill_columns())
+    object_mentions = _read_parquet_with_columns(Path(object_mentions_path), _object_fill_columns())
+    object_graph_candidates = _read_parquet_with_columns(
+        Path(object_graph_candidates_path),
+        _object_fill_columns(),
+    )
+    cited_title_profiles = _read_parquet_with_columns(
+        Path(cited_title_profiles_path),
+        _object_fill_columns(),
+    )
     phase2_queue = build_phase2_input_queue(
         queue=queue,
         candidates=candidates,
         contexts=contexts,
+        object_mentions=object_mentions,
+        object_graph_candidates=object_graph_candidates,
+        cited_title_profiles=cited_title_profiles,
         limit=limit,
         seed=seed,
         model=review_model,
@@ -282,19 +300,21 @@ def run_phase2_structured_extraction(
     jsonl_output = Path(jsonl_out)
     parquet_output = Path(parquet_out)
     failed_output = Path(failed_out)
+    dry_run_prompts_output = Path(dry_run_prompts_out)
     report_output = Path(report_path)
     review_sample_output = Path(review_sample_out)
     for output_path in (
         jsonl_output,
         parquet_output,
         failed_output,
+        dry_run_prompts_output,
         report_output,
         review_sample_output,
     ):
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
     if dry_run:
-        dry_run_records = write_phase2_dry_run_prompts(phase2_queue, jsonl_output)
+        dry_run_records = write_phase2_dry_run_prompts(phase2_queue, dry_run_prompts_output)
         failed_output.write_text("", encoding="utf-8")
         results = pd.DataFrame(columns=PHASE2_RESULT_COLUMNS)
         failed = pd.DataFrame(columns=PHASE2_FAILED_COLUMNS)
@@ -315,6 +335,7 @@ def run_phase2_structured_extraction(
                 jsonl_out=jsonl_output,
                 parquet_out=parquet_output,
                 failed_out=failed_output,
+                dry_run_prompts_out=dry_run_prompts_output,
                 review_sample_out=review_sample_output,
                 dry_run=True,
             ),
@@ -371,6 +392,7 @@ def run_phase2_structured_extraction(
             jsonl_out=jsonl_output,
             parquet_out=parquet_output,
             failed_out=failed_output,
+            dry_run_prompts_out=dry_run_prompts_output,
             review_sample_out=review_sample_output,
             dry_run=False,
         ),
@@ -384,6 +406,9 @@ def build_phase2_input_queue(
     queue: pd.DataFrame,
     candidates: pd.DataFrame,
     contexts: pd.DataFrame,
+    object_mentions: pd.DataFrame | None = None,
+    object_graph_candidates: pd.DataFrame | None = None,
+    cited_title_profiles: pd.DataFrame | None = None,
     limit: int = 600,
     seed: int = 42,
     model: str = DEFAULT_OPENAI_REVIEW_MODEL,
@@ -392,6 +417,12 @@ def build_phase2_input_queue(
     prepared = _ensure_columns(queue.copy(), _queue_columns())
     prepared = _fill_from_contexts(prepared, contexts)
     prepared = _fill_from_candidates(prepared, candidates)
+    prepared = _fill_object_fields_from_tables(
+        prepared,
+        object_mentions=object_mentions,
+        object_graph_candidates=object_graph_candidates,
+        cited_title_profiles=cited_title_profiles,
+    )
     if len(prepared) > limit:
         prepared = prepared.sample(n=limit, random_state=seed).sort_values("context_id")
     prepared = prepared.drop_duplicates(subset=["context_id"], keep="first").head(limit).copy()
@@ -421,6 +452,8 @@ def extract_phase2_sample_row(
     client: Any,
     model: str,
     cache_dir: Path,
+    max_attempts: int = 2,
+    backoff_base_seconds: float = 1.0,
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     """Extract one structured Phase-2 label, using deterministic local cache."""
     cache_key = phase2_structured_cache_key(row)
@@ -433,7 +466,9 @@ def extract_phase2_sample_row(
     validation_error = ""
     raw_response = ""
     usage: dict[str, int | None] = {}
-    for attempt in range(1, 3):
+    final_attempt = 0
+    for attempt in range(1, max_attempts + 1):
+        final_attempt = attempt
         try:
             decision, raw_response, usage = call_openai_phase2_decision(
                 client=client,
@@ -455,15 +490,19 @@ def extract_phase2_sample_row(
             return record, None
         except (ValidationError, ValueError, json.JSONDecodeError) as exc:
             validation_error = str(exc)
-        except Exception as exc:  # pragma: no cover - live API/network failures only.
+        except Exception as exc:  # pragma: no cover - live API/network failures are flaky.
             validation_error = f"{type(exc).__name__}: {exc}"
+            if _is_transient_api_error(exc) and attempt < max_attempts:
+                _sleep_before_retry(attempt, backoff_base_seconds, cache_key)
+                continue
+            break
 
     failed_record = _phase2_failed_record(
         row=row,
         model=model,
         validation_error=validation_error,
         raw_response=raw_response,
-        attempts=2,
+        attempts=final_attempt,
     )
     return None, failed_record
 
@@ -591,6 +630,8 @@ def validate_phase2_decision(decision: Phase2StructuredLabel, row: dict[str, Any
     evidence = decision.evidence_span.strip()
 
     if not decision.abstain:
+        if decision.evidence_supports_label != "true":
+            raise ValueError("non-abstain final labels require evidence_supports_label=true")
         if not evidence:
             raise ValueError("non-abstain labels require non-empty evidence_span")
         if not any(evidence in field for field in evidence_fields):
@@ -606,10 +647,6 @@ def validate_phase2_decision(decision: Phase2StructuredLabel, row: dict[str, Any
         quote = getattr(decision, field_name)
         if quote and not any(quote in field for field in evidence_fields):
             raise ValueError(f"{field_name} is not an exact substring of evidence fields")
-
-    if decision.evidence_supports_label == "false" and not decision.abstain:
-        if not evidence:
-            raise ValueError("unsupported non-abstain corrected labels require evidence_span")
 
     if decision.final_intent == "uses" and not _has_current_paper_use_cue(evidence):
         raise ValueError("final_intent=uses requires current-paper use evidence")
@@ -738,6 +775,7 @@ def build_phase2_report(
     jsonl_out: Path,
     parquet_out: Path,
     failed_out: Path,
+    dry_run_prompts_out: Path = DEFAULT_PHASE2_DRY_RUN_PROMPTS_PATH,
     review_sample_out: Path,
     dry_run: bool,
 ) -> str:
@@ -778,10 +816,18 @@ def build_phase2_report(
         "and not gold human annotation.",
         "",
         "## Outputs",
-        f"- JSONL labels or dry-run prompts: `{jsonl_out}`",
+        f"- JSONL labels: `{jsonl_out}`",
         f"- Parquet labels: `{parquet_out}`",
         f"- Failed rows: `{failed_out}`",
+        f"- Dry-run prompts: `{dry_run_prompts_out}`",
         f"- Review sample CSV: `{review_sample_out}`",
+        "",
+        "## Object Field Handling",
+        (
+            "Object fields are read from the Phase-1 queue/candidates and filled from "
+            "`object_mentions`, `object_graph_candidate_mentions`, and "
+            "`cited_title_object_profiles` when those queue fields are blank."
+        ),
         "",
         "## Core Metrics",
         _table(core),
@@ -850,7 +896,10 @@ def build_phase2_report(
         sections.extend(
             [
                 "## Dry Run Note",
-                "No API calls were made. The JSONL file contains prompt records only.",
+                (
+                    "No API calls were made. The dry-run prompts JSONL contains prompt "
+                    "records only, not structured labels."
+                ),
                 "",
             ]
         )
@@ -1015,6 +1064,91 @@ def _fill_from_candidates(queue: pd.DataFrame, candidates: pd.DataFrame) -> pd.D
     return merged
 
 
+def _fill_object_fields_from_tables(
+    queue: pd.DataFrame,
+    *,
+    object_mentions: pd.DataFrame | None,
+    object_graph_candidates: pd.DataFrame | None,
+    cited_title_profiles: pd.DataFrame | None,
+) -> pd.DataFrame:
+    merged = queue.copy()
+    object_summary = _object_summary(object_mentions)
+    if not object_summary.empty:
+        merged = merged.merge(object_summary, on="context_id", how="left")
+        for column in ("object_names", "generic_metric_names"):
+            merged[column] = _fill_empty(merged[column], merged[f"{column}_from_objects"])
+            merged = merged.drop(columns=[f"{column}_from_objects"])
+        merged["object_types"] = _fill_empty_or_unknown(
+            merged["object_types"],
+            merged["object_types_from_objects"],
+        )
+        merged = merged.drop(columns=["object_types_from_objects"])
+
+    graph_summary = _object_summary(object_graph_candidates)
+    if not graph_summary.empty:
+        graph_summary = graph_summary.rename(
+            columns={"object_names_from_objects": "graph_candidate_object_names_from_graph"}
+        )
+        keep_columns = ["context_id", "graph_candidate_object_names_from_graph"]
+        merged = merged.merge(graph_summary[keep_columns], on="context_id", how="left")
+        merged["graph_candidate_object_names"] = _fill_empty(
+            merged["graph_candidate_object_names"],
+            merged["graph_candidate_object_names_from_graph"],
+        )
+        merged = merged.drop(columns=["graph_candidate_object_names_from_graph"])
+
+    title_summary = _object_summary(cited_title_profiles)
+    if not title_summary.empty:
+        title_summary = title_summary.rename(
+            columns={
+                "object_names_from_objects": "cited_title_profile_object_names_from_profiles"
+            }
+        )
+        keep_columns = ["context_id", "cited_title_profile_object_names_from_profiles"]
+        merged = merged.merge(title_summary[keep_columns], on="context_id", how="left")
+        merged["cited_title_profile_object_names"] = _fill_empty(
+            merged["cited_title_profile_object_names"],
+            merged["cited_title_profile_object_names_from_profiles"],
+        )
+        merged = merged.drop(columns=["cited_title_profile_object_names_from_profiles"])
+    return merged
+
+
+def _object_summary(frame: pd.DataFrame | None) -> pd.DataFrame:
+    columns = [
+        "context_id",
+        "object_names_from_objects",
+        "object_types_from_objects",
+        "generic_metric_names_from_objects",
+    ]
+    if frame is None or frame.empty:
+        return pd.DataFrame(columns=columns)
+    prepared = _ensure_columns(frame.copy(), _object_fill_columns())
+    if prepared.empty:
+        return pd.DataFrame(columns=columns)
+    prepared["canonical_name"] = prepared["canonical_name"].map(_clean)
+    prepared["object_type"] = prepared["object_type"].map(_clean)
+    prepared["object_category"] = prepared["object_category"].map(_clean)
+    prepared = prepared.loc[prepared["context_id"].map(_clean).ne("")]
+    rows = []
+    for context_id, group in prepared.groupby("context_id", dropna=False):
+        rows.append(
+            {
+                "context_id": context_id,
+                "object_names_from_objects": _join_unique(group["canonical_name"]),
+                "object_types_from_objects": _join_unique(group["object_type"]),
+                "generic_metric_names_from_objects": _join_unique(
+                    group.loc[
+                        group["object_category"].eq("generic_metric")
+                        | group["object_type"].eq("metric"),
+                        "canonical_name",
+                    ]
+                ),
+            }
+        )
+    return pd.DataFrame(rows, columns=columns)
+
+
 def _read_parquet_with_columns(path: Path, columns: list[str]) -> pd.DataFrame:
     available = set(pq.read_schema(path).names)
     read_columns = [column for column in columns if column in available]
@@ -1079,6 +1213,10 @@ def _context_fill_columns() -> list[str]:
     ]
 
 
+def _object_fill_columns() -> list[str]:
+    return ["context_id", "canonical_name", "object_type", "object_category"]
+
+
 def _prompt_row_payload(row: dict[str, Any]) -> dict[str, Any]:
     return {column: _clean(row.get(column)) for column in PHASE2_INPUT_COLUMNS}
 
@@ -1093,6 +1231,31 @@ def _usage_to_dict(usage: Any) -> dict[str, int | None]:
         or getattr(usage, "completion_tokens", None),
         "total_tokens": getattr(usage, "total_tokens", None),
     }
+
+
+def _is_transient_api_error(exc: Exception) -> bool:
+    name = type(exc).__name__
+    transient_names = (
+        "RateLimitError",
+        "APITimeoutError",
+        "APIConnectionError",
+        "InternalServerError",
+        "ServiceUnavailableError",
+        "TimeoutError",
+        "ConnectionError",
+    )
+    if any(token in name for token in transient_names):
+        return True
+    status_code = getattr(exc, "status_code", None)
+    return isinstance(status_code, int) and (status_code == 429 or status_code >= 500)
+
+
+def _sleep_before_retry(attempt: int, base_seconds: float, cache_key: str) -> None:
+    if base_seconds <= 0:
+        return
+    jitter_seed = f"{cache_key}:{attempt}".encode()
+    jitter = random.Random(jitter_seed).uniform(0, base_seconds / 2)
+    time.sleep((base_seconds * (2 ** (attempt - 1))) + jitter)
 
 
 def _phase1_phase2_disagreement(results: pd.DataFrame) -> dict[str, float | int]:
@@ -1245,6 +1408,25 @@ def _fill_empty(left: pd.Series, right: pd.Series) -> pd.Series:
     left_text = left.fillna("").astype(str)
     right_text = right.fillna("").astype(str)
     return left_text.where(left_text.str.strip().ne(""), right_text)
+
+
+def _fill_empty_or_unknown(left: pd.Series, right: pd.Series) -> pd.Series:
+    left_text = left.fillna("").astype(str)
+    right_text = right.fillna("").astype(str)
+    keep_left = left_text.str.strip().ne("") & ~left_text.str.strip().str.lower().eq("unknown")
+    return left_text.where(keep_left, right_text)
+
+
+def _join_unique(values: pd.Series) -> str:
+    seen: set[str] = set()
+    output: list[str] = []
+    for value in values:
+        text = _clean(value)
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        output.append(text)
+    return ";".join(output)
 
 
 def _ensure_columns(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:

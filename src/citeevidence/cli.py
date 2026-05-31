@@ -147,6 +147,7 @@ from citeevidence.phase1_llm_review import (
 )
 from citeevidence.phase2 import (
     DEFAULT_PHASE2_CACHE_DIR,
+    DEFAULT_PHASE2_DRY_RUN_PROMPTS_PATH,
     DEFAULT_PHASE2_REVIEW_SAMPLE_PATH,
     DEFAULT_PHASE2_STRUCTURED_FAILED_PATH,
     DEFAULT_PHASE2_STRUCTURED_JSONL_PATH,
@@ -1256,6 +1257,10 @@ def extract_phase2_structured(
         Path,
         typer.Option("--failed-out", help="Output failed Phase-2 rows JSONL path."),
     ] = DEFAULT_PHASE2_STRUCTURED_FAILED_PATH,
+    dry_run_prompts_out: Annotated[
+        Path,
+        typer.Option("--dry-run-prompts-out", help="Output dry-run Phase-2 prompt JSONL path."),
+    ] = DEFAULT_PHASE2_DRY_RUN_PROMPTS_PATH,
     report: Annotated[
         Path,
         typer.Option("--report", help="Output Phase-2 structured extraction report path."),
@@ -1301,6 +1306,7 @@ def extract_phase2_structured(
             jsonl_out=jsonl_out,
             parquet_out=parquet_out,
             failed_out=failed_out,
+            dry_run_prompts_out=dry_run_prompts_out,
             report_path=report,
             review_sample_out=review_sample,
             cache_dir=cache_dir,
@@ -1318,7 +1324,8 @@ def extract_phase2_structured(
     console.print(
         f"Prepared {metrics['total_queue_rows']} Phase-2 queue rows; "
         f"{completed} {mode}; failed={metrics['failed_rows']}. "
-        f"Wrote {jsonl_out}, {parquet_out}, {failed_out}, {review_sample}, and {report}."
+        f"Wrote {jsonl_out}, {parquet_out}, {failed_out}, {dry_run_prompts_out}, "
+        f"{review_sample}, and {report}."
     )
 
 

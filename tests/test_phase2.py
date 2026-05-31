@@ -11,9 +11,11 @@ from citeevidence.phase2 import (
     PHASE2_PROMPT_VERSION,
     PHASE2_RESULT_COLUMNS,
     Phase2StructuredLabel,
+    build_phase2_input_queue,
     build_phase2_metrics,
     build_phase2_report,
     build_phase2_review_sample,
+    extract_phase2_sample_row,
     phase2_structured_cache_key,
     validate_phase2_decision,
 )
@@ -142,8 +144,10 @@ def test_phase2_dry_run_cli_creates_prompts_without_api_key(tmp_path: Path) -> N
     jsonl_out = tmp_path / "phase2.jsonl"
     parquet_out = tmp_path / "phase2.parquet"
     failed_out = tmp_path / "failed.jsonl"
+    prompts_out = tmp_path / "prompts.jsonl"
     report = tmp_path / "report.md"
     review_sample = tmp_path / "review.csv"
+    jsonl_out.write_text("existing labels\n", encoding="utf-8")
 
     result = CliRunner().invoke(
         app,
@@ -170,6 +174,8 @@ def test_phase2_dry_run_cli_creates_prompts_without_api_key(tmp_path: Path) -> N
             str(parquet_out),
             "--failed-out",
             str(failed_out),
+            "--dry-run-prompts-out",
+            str(prompts_out),
             "--report",
             str(report),
             "--review-sample",
@@ -181,7 +187,8 @@ def test_phase2_dry_run_cli_creates_prompts_without_api_key(tmp_path: Path) -> N
     )
 
     assert result.exit_code == 0
-    assert len(jsonl_out.read_text(encoding="utf-8").splitlines()) == 2
+    assert jsonl_out.read_text(encoding="utf-8") == "existing labels\n"
+    assert len(prompts_out.read_text(encoding="utf-8").splitlines()) == 2
     assert failed_out.read_text(encoding="utf-8") == ""
     assert pd.read_parquet(parquet_out).empty
     assert pd.read_csv(review_sample).empty
@@ -232,6 +239,37 @@ def test_phase2_abstain_rules_are_conservative() -> None:
         abstain=True,
         abstain_reason="insufficient_evidence",
         confidence=0.3,
+    )
+    validate_phase2_decision(decision, _queue_row())
+
+
+def test_phase2_non_abstain_requires_evidence_supports_true() -> None:
+    row = _queue_row()
+    with pytest.raises(ValueError, match="evidence_supports_label=true"):
+        validate_phase2_decision(
+            _valid_decision(evidence_supports_label="false"),
+            row,
+        )
+    with pytest.raises(ValueError, match="evidence_supports_label=true"):
+        validate_phase2_decision(
+            _valid_decision(evidence_supports_label="unclear"),
+            row,
+        )
+
+
+def test_phase2_abstain_accepts_false_evidence_support_with_low_confidence() -> None:
+    decision = _valid_decision(
+        final_intent="unclear",
+        final_object_type="unknown",
+        final_relation_subtype="none",
+        method_edge_type="not_method_related",
+        stance="unclear",
+        evidence_span="",
+        usage_or_mechanism_quote=None,
+        evidence_supports_label="false",
+        abstain=True,
+        abstain_reason="insufficient_evidence",
+        confidence=0.2,
     )
     validate_phase2_decision(decision, _queue_row())
 
@@ -330,6 +368,89 @@ def test_phase2_report_generation_with_fake_outputs(tmp_path: Path) -> None:
     assert {"reviewer_correct", "reviewer_notes"} <= set(review_sample.columns)
 
 
+def test_phase2_input_queue_fills_missing_object_fields_from_tables() -> None:
+    queue = pd.DataFrame(
+        [
+            _queue_row(
+                object_names="",
+                graph_candidate_object_names="",
+                cited_title_profile_object_names="",
+                primary_candidate_object_type="unknown",
+            )
+        ]
+    )
+    candidates = queue.copy()
+    contexts = queue[
+        [
+            "context_id",
+            "source_context_id",
+            "citing_paper_id",
+            "resolved_cited_acl_id",
+            "resolved_cited_title",
+            "resolved_cited_year",
+            "resolved_cited_authors",
+            "normalized_section",
+            "raw_section_name",
+            "citation_marker",
+            "sentence_text",
+            "context_window_s3",
+        ]
+    ].copy()
+    object_mentions = pd.DataFrame(
+        [
+            {
+                "context_id": "ctx_use",
+                "canonical_name": "BERT",
+                "object_type": "model",
+                "object_category": "named_object",
+            },
+            {
+                "context_id": "ctx_use",
+                "canonical_name": "F1",
+                "object_type": "metric",
+                "object_category": "generic_metric",
+            },
+        ]
+    )
+    graph = pd.DataFrame(
+        [
+            {
+                "context_id": "ctx_use",
+                "canonical_name": "BERT",
+                "object_type": "model",
+                "object_category": "named_object",
+            }
+        ]
+    )
+    title_profiles = pd.DataFrame(
+        [
+            {
+                "context_id": "ctx_use",
+                "canonical_name": "Transformer",
+                "object_type": "model",
+                "object_category": "named_object",
+            }
+        ]
+    )
+
+    prepared = build_phase2_input_queue(
+        queue=queue,
+        candidates=candidates,
+        contexts=contexts,
+        object_mentions=object_mentions,
+        object_graph_candidates=graph,
+        cited_title_profiles=title_profiles,
+        model="fixture-model",
+    )
+
+    row = prepared.iloc[0]
+    assert row["object_names"] == "BERT;F1"
+    assert row["object_types"] == "model;metric"
+    assert row["generic_metric_names"] == "F1"
+    assert row["graph_candidate_object_names"] == "BERT"
+    assert row["cited_title_profile_object_names"] == "Transformer"
+
+
 def test_phase2_cache_key_is_deterministic() -> None:
     row = _queue_row()
     row["prompt_version"] = PHASE2_PROMPT_VERSION
@@ -339,3 +460,102 @@ def test_phase2_cache_key_is_deterministic() -> None:
     changed = dict(row)
     changed["evidence_span"] = "we employ"
     assert phase2_structured_cache_key(row) != phase2_structured_cache_key(changed)
+
+
+class _TransientError(Exception):
+    status_code = 429
+
+
+class _FakeUsage:
+    input_tokens = 10
+    output_tokens = 5
+    total_tokens = 15
+
+
+class _FakeResponse:
+    def __init__(self, parsed: Phase2StructuredLabel | None = None, output_text: str = "") -> None:
+        self.output_parsed = parsed
+        self.output_text = output_text
+        self.usage = _FakeUsage()
+
+
+class _FakeResponses:
+    def __init__(self, outcomes: list[object]) -> None:
+        self.outcomes = outcomes
+        self.calls = 0
+
+    def parse(self, **_: object) -> _FakeResponse:
+        outcome = self.outcomes[self.calls]
+        self.calls += 1
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+
+class _FakeClient:
+    def __init__(self, outcomes: list[object]) -> None:
+        self.responses = _FakeResponses(outcomes)
+
+
+def test_phase2_transient_failure_then_success_has_attempts_two(tmp_path: Path) -> None:
+    row = _queue_row()
+    row["prompt_version"] = PHASE2_PROMPT_VERSION
+    row["model"] = "fixture-model"
+    client = _FakeClient([_TransientError("rate limit"), _FakeResponse(_valid_decision())])
+
+    record, failed = extract_phase2_sample_row(
+        row=row,
+        client=client,
+        model="fixture-model",
+        cache_dir=tmp_path,
+        backoff_base_seconds=0,
+    )
+
+    assert failed is None
+    assert record is not None
+    assert record["review_status"] == "structured_extracted"
+    assert record["attempts"] == 2
+
+
+def test_phase2_repeated_transient_failure_writes_failed_row(tmp_path: Path) -> None:
+    row = _queue_row()
+    row["prompt_version"] = PHASE2_PROMPT_VERSION
+    row["model"] = "fixture-model"
+    client = _FakeClient([_TransientError("rate limit"), _TransientError("still limited")])
+
+    record, failed = extract_phase2_sample_row(
+        row=row,
+        client=client,
+        model="fixture-model",
+        cache_dir=tmp_path,
+        backoff_base_seconds=0,
+    )
+
+    assert record is None
+    assert failed is not None
+    assert failed["attempts"] == 2
+    assert "TransientError" in failed["validation_error"]
+
+
+def test_phase2_schema_invalid_response_fails_after_retry(tmp_path: Path) -> None:
+    row = _queue_row()
+    row["prompt_version"] = PHASE2_PROMPT_VERSION
+    row["model"] = "fixture-model"
+    client = _FakeClient(
+        [
+            _FakeResponse(output_text='{"final_intent":"bad"}'),
+            _FakeResponse(output_text='{"final_intent":"bad"}'),
+        ]
+    )
+
+    record, failed = extract_phase2_sample_row(
+        row=row,
+        client=client,
+        model="fixture-model",
+        cache_dir=tmp_path,
+        backoff_base_seconds=0,
+    )
+
+    assert record is None
+    assert failed is not None
+    assert failed["attempts"] == 2
