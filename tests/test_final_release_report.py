@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 import pandas as pd
 
 from citeevidence.final_release.report import (
@@ -151,9 +153,25 @@ def test_report_uses_required_final_release_wording() -> None:
     report = _report_text().casefold()
 
     assert "citation-context volume" in report
+    assert (
+        "the main scientific point is that citation-context volume, rhetorical section"
+        in report
+    )
     assert "seed-registry object-use graph" in report
     assert "exploratory heuristic cue-family map" in report
     assert "not a validated bottleneck taxonomy" in report
+    assert re.search(r"(?<!citation-)context volume, rhetorical section", report) is None
+
+
+def test_report_headings_are_blank_line_separated() -> None:
+    lines = _report_text().splitlines()
+
+    for index, line in enumerate(lines):
+        if not line.startswith("#"):
+            continue
+        if index == 0:
+            continue
+        assert lines[index - 1] == ""
 
 
 def test_figure_manifest_has_expected_columns() -> None:

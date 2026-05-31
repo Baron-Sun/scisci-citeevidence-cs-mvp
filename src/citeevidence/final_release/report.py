@@ -146,8 +146,8 @@ def _executive_summary() -> str:
                 "evidence-use rank reversals, and exploratory critique cue families."
             ),
             (
-                "The main scientific point is that context volume, rhetorical section, "
-                "object type, and evidence-use function are distinct signals."
+                "The main scientific point is that citation-context volume, rhetorical "
+                "section, object type, and evidence-use function are distinct signals."
             ),
         ]
     )
@@ -178,6 +178,7 @@ def _scope_section() -> str:
                 "contexts. It is a course-scale evidence layer, not a universal map of NLP."
             ),
             _bullet_list(bullets),
+            "",
             "## Data and evidence scope",
             (
                 "All claims below are conditioned on final analysis-ready Phase-2 labels "
@@ -202,8 +203,10 @@ def _qa_section(
                 "labels, not human gold annotations."
             ),
             _markdown_table(qa_summary, max_rows=8),
+            "",
             "### Confidence By Intent",
             _markdown_table(confidence_by_intent, max_rows=6),
+            "",
             "### Remaining Failure Categories",
             _markdown_table(failure_categories, max_rows=6),
         ]

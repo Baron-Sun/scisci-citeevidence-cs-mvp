@@ -7,6 +7,7 @@ import pandas as pd
 from typer.testing import CliRunner
 
 from citeevidence.cli import app
+from citeevidence.final_release.metrics import build_critique_evidence_cards
 from citeevidence.final_release.report import validate_final_release_report_text
 from citeevidence.final_release.runner import run_final_release_analysis
 
@@ -46,6 +47,28 @@ def test_runner_writes_bounded_report_sources_figures_and_samples(tmp_path: Path
     ]:
         assert (tmp_path / "figures" / f"{name}.png").exists()
         assert (tmp_path / "figures" / f"{name}.svg").exists()
+
+
+def test_runner_enriches_qa_sample_with_object_risk_columns(tmp_path: Path) -> None:
+    paths = _write_fixture_inputs(tmp_path)
+    _run_fixture_runner(tmp_path, paths)
+
+    sample = pd.read_csv(tmp_path / "data" / "final_release_qa_sample.csv")
+    shortfall = " ".join(sample["sample_shortfall"].dropna().astype(str))
+
+    assert {"object_count", "object_candidate_rank", "matched_in"}.issubset(sample.columns)
+    assert "missing risk columns" not in shortfall
+    assert "multi_object_or_policy_risk" in set(sample["sample_stratum"])
+
+
+def test_runner_writes_deduplicated_evidence_cards(tmp_path: Path) -> None:
+    paths = _write_fixture_inputs(tmp_path)
+    _run_fixture_runner(tmp_path, paths)
+
+    cards = pd.read_csv(tmp_path / "data" / "final_release_evidence_cards.csv")
+    key = ["bottleneck_family", "object_name", "object_type", "evidence_span"]
+
+    assert not cards.duplicated(key).any()
 
 
 def test_runner_report_passes_final_release_guardrails(tmp_path: Path) -> None:
@@ -110,6 +133,23 @@ def test_runner_source_does_not_call_apis_or_batch_jobs() -> None:
     assert "requests." not in source
     assert "submit_batch" not in source
     assert "data/batch" not in source
+
+
+def test_critique_evidence_cards_deduplicate_repeated_spans() -> None:
+    edges = pd.DataFrame(
+        [
+            _critique_edge("c1", "BLEU does not capture human judgment."),
+            _critique_edge("c2", "BLEU does not capture human judgment."),
+            _critique_edge("c3", "BLEU score has weak correlation with human judgment."),
+        ]
+    )
+
+    cards = build_critique_evidence_cards(edges, per_family=2)
+    key = ["bottleneck_family", "object_name", "object_type", "evidence_span"]
+
+    assert len(cards) == 2
+    assert not cards.duplicated(key).any()
+    assert cards["evidence_span"].nunique() == 2
 
 
 def _run_fixture_runner(tmp_path: Path, paths: dict[str, Path]) -> dict[str, object]:
@@ -283,4 +323,31 @@ def _object_graph_fixture(context_ids: list[str]) -> pd.DataFrame:
                 "graph_eligible": True,
             }
         )
+        if context_id.startswith("a") and context_id not in {"a0", "a1"}:
+            rows.append(
+                {
+                    "context_id": context_id,
+                    "object_id": "method::auxiliary",
+                    "canonical_name": "Auxiliary Method",
+                    "object_type": "method",
+                    "object_category": "method",
+                    "confidence": 0.60,
+                    "matched_in": "context_window",
+                    "allow_in_object_graph": True,
+                    "graph_eligible": True,
+                }
+            )
     return pd.DataFrame(rows)
+
+
+def _critique_edge(context_id: str, evidence_span: str) -> dict[str, object]:
+    return {
+        "context_id": context_id,
+        "object_id": "metric::bleu",
+        "canonical_name": "BLEU",
+        "object_type": "metric",
+        "final_intent": "critiques",
+        "evidence_span": evidence_span,
+        "normalized_section": "results",
+        "confidence": 0.9,
+    }

@@ -3,7 +3,7 @@
 ## Executive summary
 SciSci-CiteEvidence turns section-aware citation contexts into an evidence-grounded view of how NLP objects are cited and used.
 The release supports four claim families: section-function structure, seed-registry object role signatures, citation-context volume versus evidence-use rank reversals, and exploratory critique cue families.
-The main scientific point is that context volume, rhetorical section, object type, and evidence-use function are distinct signals.
+The main scientific point is that citation-context volume, rhetorical section, object type, and evidence-use function are distinct signals.
 
 ## What this release is and is not
 This report assembles final-release analyses around grounded citation contexts. It is a course-scale evidence layer, not a universal map of NLP.
@@ -12,6 +12,7 @@ This report assembles final-release analyses around grounded citation contexts. 
 - Object graph claims are over a curated seed-registry object-use graph, not the full universe of NLP methods.
 - Current outputs are an object-use/citation-function graph, not a completed Intern-Atlas-scale method evolution graph.
 - total_strong_contexts is citation-context volume rather than graph in-degree.
+
 ## Data and evidence scope
 All claims below are conditioned on final analysis-ready Phase-2 labels and their retained evidence spans. Source artifacts are listed at the end so figures can be regenerated or audited.
 
@@ -27,6 +28,7 @@ QA is reported as release diagnostics, not as human adjudication. The label set 
 | evidence_supports_label_true_rows | 2.3e+05 |  |
 | abstain_true_rows | 0 |  |
 | mean_confidence | 0.892 |  |
+
 ### Confidence By Intent
 | final_intent | rows | mean_confidence |
 | --- | --- | --- |
@@ -36,6 +38,7 @@ QA is reported as release diagnostics, not as human adjudication. The label set 
 | critiques | 6402 | 0.893 |
 | extends | 4763 | 0.889 |
 | uses | 50191 | 0.937 |
+
 ### Remaining Failure Categories
 | rows | failure_category | row_share |
 | --- | --- | --- |
@@ -98,12 +101,12 @@ Figure artifact: `figures/final_release/f05_critique_bottleneck_heatmap.png`.
 Evidence cards provide compact examples for reviewers. They illustrate the evidence surface but do not convert the release into gold annotation.
 | normalized_section | object_type | bottleneck_family | evidence_span |
 | --- | --- | --- | --- |
-| introduction | metric | computational_cost | they generally suffer from slow and unstable training due to the high variance of policy grad... |
+| introduction | metric | computational_cost | Although intuitive, they generally suffer from slow and unstable training due to the high var... |
 | related_work | model | computational_cost | This contrasts with our results with Transformer-based architecture and is probably explained... |
-| introduction | metric | data_resource_requirement | Previous work (Ng and Abrecht, 2015; Liu and Liu, 2008; Liu et al., 2016; Shang et al., 2018)... |
-| introduction | metric | data_resource_requirement | Previous work (Ng and Abrecht, 2015; Liu and Liu, 2008; Liu et al., 2016; Shang et al., 2018)... |
-| unknown | method | failure_limitation | The cascaded CRF layers of Ju et al. (2018) are the limitation in inference speed. |
-| unknown | method | failure_limitation | the attention mechanism fails to provide explanation |
+| unknown | dataset_or_database | data_resource_requirement | Currently available lexical resources for opinion polarity and affect recognition such as Sen... |
+| experiment | dataset_or_database | data_resource_requirement | showed that these two datasets suffer from test set leakage and released WN18RR and FB15k-237... |
+| unknown | method | failure_limitation | in the sequences with standard BIO2 schema (Tjong Kim Sang and Veenstra, 1999) , I-ORG cannot... |
+| method | model | failure_limitation | While approaches like that of Bojanowski et al. (2017) can also compose embeddings for unseen... |
 
 ## Limitations
 - ACL-OCL / ACL-centric scope: this release analyzes ACL-derived citation contexts.

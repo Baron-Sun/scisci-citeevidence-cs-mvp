@@ -161,12 +161,13 @@ def run_final_release_analysis(
     phase1_rows = _optional_parquet_row_count(phase1_path)
 
     labels = prepare_final_release_labels(labels_raw)
+    labels_with_risk = enrich_labels_with_object_risk(labels, object_graph)
     object_edges = build_final_release_object_edges(labels, object_graph)
 
     qa_summary = build_label_quality_summary(labels, excluded, failed_diagnostics)
     confidence_by_intent = summarize_confidence_by_intent(labels)
     failure_categories = summarize_failure_categories(failed_diagnostics)
-    qa_sample = build_stratified_qa_sample(labels)
+    qa_sample = build_stratified_qa_sample(labels_with_risk)
 
     section_counts = build_section_function_counts(labels)
     section_lift = build_section_function_lift(section_counts)
@@ -369,6 +370,42 @@ def build_final_release_object_edges(
     )
 
 
+def enrich_labels_with_object_risk(
+    labels: pd.DataFrame,
+    object_graph: pd.DataFrame,
+) -> pd.DataFrame:
+    """Add context-level object-risk fields for reviewer QA sampling."""
+    frame = labels.copy()
+    graph = _prepare_object_graph_candidates(object_graph)
+    risk_columns = ["object_count", "object_candidate_rank", "matched_in"]
+    if graph.empty:
+        frame["object_count"] = 0
+        frame["object_candidate_rank"] = pd.NA
+        frame["matched_in"] = ""
+        return frame
+
+    counts = graph.groupby("context_id", dropna=False).size().reset_index(name="object_count")
+    best_candidates = (
+        graph.sort_values(["context_id", "object_candidate_rank"])
+        .groupby("context_id", dropna=False)
+        .agg(
+            object_candidate_rank=("object_candidate_rank", "min"),
+            matched_in=("matched_in", _first_non_empty),
+        )
+        .reset_index()
+    )
+    context_risk = counts.merge(best_candidates, on="context_id", how="left")
+    frame = frame.drop(columns=[column for column in risk_columns if column in frame])
+    frame = frame.merge(context_risk, on="context_id", how="left")
+    frame["object_count"] = pd.to_numeric(frame["object_count"], errors="coerce").fillna(0)
+    frame["object_candidate_rank"] = pd.to_numeric(
+        frame["object_candidate_rank"],
+        errors="coerce",
+    ).astype("Float64")
+    frame["matched_in"] = frame["matched_in"].fillna("").map(_clean)
+    return frame
+
+
 def _write_final_release_figures(
     *,
     section_lift: pd.DataFrame,
@@ -425,6 +462,7 @@ def _prepare_object_graph_candidates(object_graph: pd.DataFrame) -> pd.DataFrame
         ["context_id", "object_confidence", "matched_in_priority", "canonical_name"],
         ascending=[True, False, False, True],
     )
+    graph["object_candidate_rank"] = graph.groupby("context_id", dropna=False).cumcount() + 1
     return graph[
         [
             "context_id",
@@ -433,6 +471,7 @@ def _prepare_object_graph_candidates(object_graph: pd.DataFrame) -> pd.DataFrame
             "object_type",
             "object_category",
             "object_confidence",
+            "object_candidate_rank",
             "matched_in",
         ]
     ]
@@ -556,6 +595,14 @@ def _clean(value: Any) -> str:
     except (TypeError, ValueError):
         return str(value).strip()
     return str(value).strip()
+
+
+def _first_non_empty(values: pd.Series) -> str:
+    for value in values:
+        text = _clean(value)
+        if text:
+            return text
+    return ""
 
 
 def _display_path(path: str | Path) -> str:

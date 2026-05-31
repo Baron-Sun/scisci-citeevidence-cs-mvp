@@ -500,6 +500,11 @@ def build_critique_evidence_cards(
             strict=True,
         )
     ]
+    critiques = critiques.sort_values(
+        ["bottleneck_family", "object_name", "object_type", "context_id"]
+    ).drop_duplicates(
+        ["bottleneck_family", "object_name", "object_type", "evidence_span"],
+    )
     samples = []
     for offset, family in enumerate(CRITIQUE_BOTTLENECK_FAMILIES):
         family_rows = critiques.loc[critiques["bottleneck_family"].eq(family)]
