@@ -136,6 +136,69 @@ def test_label_quality_summary_counts_grounded_and_ungrounded_rows() -> None:
     assert values["distinct_sections"] == 2
 
 
+def test_label_quality_summary_marks_analysis_ready_missing_when_column_absent() -> None:
+    labels = pd.DataFrame(
+        [
+            {
+                "context_id": "c1",
+                "final_intent": "uses",
+                "evidence_span": "grounded span",
+                "sentence_text": "A grounded span appears here.",
+            }
+        ]
+    )
+
+    summary = build_label_quality_summary(labels)
+    row = summary.loc[summary["metric"].eq("analysis_ready_rows")].iloc[0]
+
+    assert pd.isna(row["value"])
+    assert "analysis_ready column not present" in row["note"]
+
+
+def test_label_quality_summary_counts_analysis_ready_when_column_present() -> None:
+    labels = pd.DataFrame(
+        [
+            {"context_id": "c1", "analysis_ready": True},
+            {"context_id": "c2", "analysis_ready": "true"},
+            {"context_id": "c3", "analysis_ready": False},
+            {"context_id": "c4", "analysis_ready": ""},
+        ]
+    )
+
+    summary = build_label_quality_summary(labels)
+    row = summary.loc[summary["metric"].eq("analysis_ready_rows")].iloc[0]
+
+    assert row["value"] == 2
+    assert row["note"] == ""
+
+
+def test_label_quality_summary_counts_unrevalidated_failed_rows() -> None:
+    labels = pd.DataFrame([{"context_id": "c1"}])
+    failed = pd.DataFrame(
+        [
+            {"context_id": "f1", "revalidated": True},
+            {"context_id": "f2", "revalidated": "true"},
+            {"context_id": "f3", "revalidated": False},
+            {"context_id": "f4", "revalidated": ""},
+        ]
+    )
+
+    summary = build_label_quality_summary(labels, failed_diagnostics=failed)
+    values = dict(zip(summary["metric"], summary["value"], strict=True))
+
+    assert values["remaining_failed_rows"] == 2
+
+
+def test_label_quality_summary_counts_all_failed_rows_without_revalidated_column() -> None:
+    labels = pd.DataFrame([{"context_id": "c1"}])
+    failed = pd.DataFrame({"context_id": ["f1", "f2", "f3"]})
+
+    summary = build_label_quality_summary(labels, failed_diagnostics=failed)
+    values = dict(zip(summary["metric"], summary["value"], strict=True))
+
+    assert values["remaining_failed_rows"] == 3
+
+
 def test_summarize_confidence_by_intent_computes_expected_stats() -> None:
     labels = pd.DataFrame(
         [

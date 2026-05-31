@@ -166,7 +166,10 @@ def build_label_quality_summary(
         rows.append({"metric": metric, "value": value, "note": note})
 
     add("total_labels", len(frame))
-    add("analysis_ready_rows", int(frame["analysis_ready_bool"].sum()))
+    if "analysis_ready" in labels:
+        add("analysis_ready_rows", int(frame["analysis_ready_bool"].sum()))
+    else:
+        add("analysis_ready_rows", pd.NA, "analysis_ready column not present")
     add("evidence_span_present_rows", int(present.sum()))
     add("evidence_span_grounded_rows", int(grounded.sum()))
     add(
@@ -180,7 +183,7 @@ def build_label_quality_summary(
     if excluded is not None:
         add("excluded_rows", len(excluded))
     if failed_diagnostics is not None:
-        add("remaining_failed_rows", len(failed_diagnostics))
+        add("remaining_failed_rows", _remaining_failed_rows(failed_diagnostics))
     add("distinct_final_intents", _distinct_non_empty(frame, "final_intent"))
     if "normalized_section" in frame:
         add("distinct_sections", _distinct_non_empty(frame, "normalized_section"))
@@ -297,6 +300,13 @@ def build_stratified_qa_sample(
         output[column] = ""
     output["sample_shortfall"] = "; ".join(dict.fromkeys(shortfalls))
     return output
+
+
+def _remaining_failed_rows(failed_diagnostics: pd.DataFrame) -> int:
+    if "revalidated" not in failed_diagnostics:
+        return len(failed_diagnostics)
+    revalidated = failed_diagnostics["revalidated"].map(_parse_bool).astype(bool)
+    return int((~revalidated).sum())
 
 
 def _coalesce_text_columns(frame: pd.DataFrame, columns: list[str]) -> pd.Series:
