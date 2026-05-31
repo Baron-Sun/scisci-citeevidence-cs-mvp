@@ -89,6 +89,17 @@ from citeevidence.llm_review import (
 from citeevidence.llm_review import (
     DEFAULT_OBJECT_REGISTRY_PATH as DEFAULT_LLM_REVIEW_REGISTRY_PATH,
 )
+from citeevidence.object_policy import (
+    DEFAULT_CITED_TITLE_OBJECT_PROFILES_FINAL_PATH,
+    DEFAULT_CITED_TITLE_OBJECT_PROFILES_REFINED_PATH,
+    DEFAULT_OBJECT_GRAPH_CANDIDATES_PATH,
+    DEFAULT_OBJECT_MATCHING_FINAL_REPORT,
+    DEFAULT_OBJECT_MENTIONS_FINAL_PATH,
+    DEFAULT_OBJECT_MENTIONS_LLM_REVIEW_PATH,
+    DEFAULT_OBJECT_MENTIONS_REFINED_PATH,
+    DEFAULT_OBJECT_REGISTRY_POLICY_REPORT,
+    apply_object_review_policy,
+)
 from citeevidence.objects import (
     DEFAULT_CITED_TITLE_OBJECT_PROFILES_SAMPLE_PATH,
     DEFAULT_OBJECT_MATCHING_SAMPLE_REPORT,
@@ -957,6 +968,83 @@ def match_objects(
         f"matched {metrics['total_object_mentions']} object mentions in "
         f"{metrics['contexts_with_at_least_one_object_mention']} contexts. "
         f"Wrote {out}, {cited_title_profiles}, {review_sample}, and {report}."
+    )
+
+
+@objects_app.command("apply-review-policy")
+def apply_review_policy(
+    object_mentions: Annotated[
+        Path,
+        typer.Option("--object-mentions", help="Path to refined object mentions parquet."),
+    ] = DEFAULT_OBJECT_MENTIONS_REFINED_PATH,
+    cited_title_profiles: Annotated[
+        Path,
+        typer.Option(
+            "--cited-title-profiles",
+            help="Path to refined cited-title object profiles parquet.",
+        ),
+    ] = DEFAULT_CITED_TITLE_OBJECT_PROFILES_REFINED_PATH,
+    llm_review: Annotated[
+        Path,
+        typer.Option("--llm-review", help="Path to LLM-as-judge review parquet."),
+    ] = DEFAULT_OBJECT_MENTIONS_LLM_REVIEW_PATH,
+    registry: Annotated[
+        Path,
+        typer.Option("--registry", help="Path to updated object registry YAML."),
+    ] = DEFAULT_OBJECT_REGISTRY_PATH,
+    out_mentions: Annotated[
+        Path,
+        typer.Option("--out-mentions", help="Output final object mentions parquet path."),
+    ] = DEFAULT_OBJECT_MENTIONS_FINAL_PATH,
+    out_title_profiles: Annotated[
+        Path,
+        typer.Option(
+            "--out-title-profiles",
+            help="Output final cited-title object profiles parquet path.",
+        ),
+    ] = DEFAULT_CITED_TITLE_OBJECT_PROFILES_FINAL_PATH,
+    out_graph_candidates: Annotated[
+        Path,
+        typer.Option(
+            "--out-graph-candidates",
+            help="Output object graph candidate mentions parquet path.",
+        ),
+    ] = DEFAULT_OBJECT_GRAPH_CANDIDATES_PATH,
+    policy_report: Annotated[
+        Path,
+        typer.Option(
+            "--policy-report",
+            help="Output registry policy update report path.",
+        ),
+    ] = DEFAULT_OBJECT_REGISTRY_POLICY_REPORT,
+    report: Annotated[
+        Path,
+        typer.Option("--report", help="Output final object matching report path."),
+    ] = DEFAULT_OBJECT_MATCHING_FINAL_REPORT,
+) -> None:
+    """Apply LLM-informed object registry and matching policy updates."""
+    try:
+        metrics = apply_object_review_policy(
+            object_mentions_path=object_mentions,
+            cited_title_profiles_path=cited_title_profiles,
+            llm_review_path=llm_review,
+            registry_path=registry,
+            out_mentions=out_mentions,
+            out_title_profiles=out_title_profiles,
+            out_graph_candidates=out_graph_candidates,
+            policy_report=policy_report,
+            report=report,
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        error_console.print(f"[red]Failed to apply object review policy:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    console.print(
+        f"Applied final object policy to {metrics['final_mentions']} mentions. "
+        f"Graph candidates: strict={metrics['strict_graph_candidate_count']}, "
+        f"broad={metrics['broad_graph_candidate_count']}. "
+        f"Wrote {out_mentions}, {out_title_profiles}, {out_graph_candidates}, "
+        f"{policy_report}, and {report}."
     )
 
 

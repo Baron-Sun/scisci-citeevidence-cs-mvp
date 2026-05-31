@@ -38,7 +38,9 @@ objects:
   linked_doi: null
   source: seed
   notes: Uppercase Transformer is treated as a model; lowercase transformer is retained
-    with lower confidence as a generic architecture term.
+    with lower confidence as a generic architecture term unless local cues such as
+    Vaswani, self-attention, Transformer model, Transformer architecture, or encoder-decoder
+    architecture disambiguate it.
   allow_short_alias: false
   require_context_cue: []
   confidence_override: null
@@ -175,10 +177,18 @@ objects:
   linked_acl_id: null
   linked_doi: null
   source: seed
-  notes: Model family alias set.
+  notes: Model family alias set. LLM review showed lower precision, so graph use
+    now requires local model/architecture/encoder-decoder/sequence-to-sequence/neural cues.
   allow_short_alias: false
-  require_context_cue: []
-  confidence_override: null
+  require_context_cue:
+  - model
+  - architecture
+  - encoder-decoder
+  - encoder decoder
+  - sequence-to-sequence
+  - sequence to sequence
+  - neural
+  confidence_override: 0.85
   require_case_sensitive: false
   object_category: named_object
   allow_in_object_graph: true
@@ -335,10 +345,14 @@ objects:
     kept low-confidence as ambiguous_short_alias.
   allow_short_alias: false
   require_context_cue:
+  - Penn Treebank
+  - Penn Tree Bank
+  - Wall Street Journal
   - treebank
   - corpus
-  - Penn Treebank
   - WSJ
+  - sections 02-21
+  - sections 2-21
   - dataset
   confidence_override: null
   require_case_sensitive: false
