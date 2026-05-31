@@ -1,0 +1,12 @@
+failure_category,rows,row_share
+evidence_span_not_substring,25311,0.36431285623812537
+use_cue_not_accepted,20648,0.2971961540675917
+quote_not_substring,10058,0.14476941677701652
+compare_cue_not_accepted,4902,0.07055673901779032
+extend_cue_not_accepted,2099,0.03021187172548794
+schema_error,1798,0.025879440382290286
+cited_title_only_object_rejected,1609,0.0231590765156313
+other,1286,0.018509989060970695
+critique_cue_not_accepted,1180,0.016984282342103748
+apply_cue_not_accepted,584,0.00840578041338016
+missing_batch_output,1,1.4393459611952329e-05

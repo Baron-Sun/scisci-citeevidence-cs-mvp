@@ -95,6 +95,35 @@ from citeevidence.contexts.resolve import (
 from citeevidence.datasets.multicite import load_multicite
 from citeevidence.datasets.normalize import write_labeled_contexts
 from citeevidence.datasets.scicite import load_scicite
+from citeevidence.final_release import (
+    DEFAULT_CONTEXTS_PATH as DEFAULT_FINAL_RELEASE_CONTEXTS_PATH,
+)
+from citeevidence.final_release import (
+    DEFAULT_EXCLUDED_LABELS_PATH as DEFAULT_FINAL_RELEASE_EXCLUDED_LABELS_PATH,
+)
+from citeevidence.final_release import (
+    DEFAULT_FAILED_DIAGNOSTICS_PATH as DEFAULT_FINAL_RELEASE_FAILED_DIAGNOSTICS_PATH,
+)
+from citeevidence.final_release import (
+    DEFAULT_FINAL_RELEASE_EVIDENCE_CARDS,
+    DEFAULT_FINAL_RELEASE_FIGURES_DIR,
+    DEFAULT_FINAL_RELEASE_QA_SAMPLE,
+    DEFAULT_FINAL_RELEASE_REPORT,
+    DEFAULT_FINAL_RELEASE_SOURCE_DATA_DIR,
+    run_final_release_analysis,
+)
+from citeevidence.final_release import (
+    DEFAULT_OBJECT_GRAPH_CANDIDATES_PATH as DEFAULT_FINAL_RELEASE_OBJECT_GRAPH_CANDIDATES_PATH,
+)
+from citeevidence.final_release import (
+    DEFAULT_OBJECT_MENTIONS_PATH as DEFAULT_FINAL_RELEASE_OBJECT_MENTIONS_PATH,
+)
+from citeevidence.final_release import (
+    DEFAULT_PHASE1_PATH as DEFAULT_FINAL_RELEASE_PHASE1_PATH,
+)
+from citeevidence.final_release import (
+    DEFAULT_PHASE2_LABELS_PATH as DEFAULT_FINAL_RELEASE_PHASE2_LABELS_PATH,
+)
 from citeevidence.final_v2 import (
     DEFAULT_FINAL_V2_EVIDENCE_CARDS,
     DEFAULT_FINAL_V2_FIGURES_DIR,
@@ -688,6 +717,101 @@ def analyze_final_results_v2(
         f"Final_v2 labels={metrics['analysis_ready_phase2_labels']}; "
         f"unique object edges={metrics['evidence_backed_object_edges']}; "
         f"figures={metrics['figure_count']}. Wrote {out_report} and {out_cards}."
+    )
+
+
+@analysis_app.command("final-release")
+def analyze_final_release(
+    phase2: Annotated[
+        Path,
+        typer.Option("--phase2", help="Final analysis-ready Phase-2 labels parquet."),
+    ] = DEFAULT_FINAL_RELEASE_PHASE2_LABELS_PATH,
+    excluded: Annotated[
+        Path,
+        typer.Option("--excluded", help="Excluded revalidated Phase-2 labels parquet."),
+    ] = DEFAULT_FINAL_RELEASE_EXCLUDED_LABELS_PATH,
+    failed_diagnostics: Annotated[
+        Path,
+        typer.Option("--failed-diagnostics", help="Batch failed diagnostics parquet."),
+    ] = DEFAULT_FINAL_RELEASE_FAILED_DIAGNOSTICS_PATH,
+    object_graph_candidates: Annotated[
+        Path,
+        typer.Option("--object-graph-candidates", help="Object graph candidate parquet."),
+    ] = DEFAULT_FINAL_RELEASE_OBJECT_GRAPH_CANDIDATES_PATH,
+    object_mentions: Annotated[
+        Path,
+        typer.Option("--object-mentions", help="Object mentions parquet."),
+    ] = DEFAULT_FINAL_RELEASE_OBJECT_MENTIONS_PATH,
+    contexts: Annotated[
+        Path,
+        typer.Option("--contexts", help="Analysis-ready strong contexts parquet."),
+    ] = DEFAULT_FINAL_RELEASE_CONTEXTS_PATH,
+    phase1: Annotated[
+        Path,
+        typer.Option("--phase1", help="Full Phase-1 candidate parquet."),
+    ] = DEFAULT_FINAL_RELEASE_PHASE1_PATH,
+    out_report: Annotated[
+        Path,
+        typer.Option("--out-report", help="Output final-release markdown report."),
+    ] = DEFAULT_FINAL_RELEASE_REPORT,
+    figures_dir: Annotated[
+        Path,
+        typer.Option("--figures-dir", help="Output directory for final-release figures."),
+    ] = DEFAULT_FINAL_RELEASE_FIGURES_DIR,
+    source_data_dir: Annotated[
+        Path,
+        typer.Option("--source-data-dir", help="Output directory for source CSVs."),
+    ] = DEFAULT_FINAL_RELEASE_SOURCE_DATA_DIR,
+    out_evidence_cards: Annotated[
+        Path,
+        typer.Option("--out-evidence-cards", help="Output bounded evidence cards CSV."),
+    ] = DEFAULT_FINAL_RELEASE_EVIDENCE_CARDS,
+    out_qa_sample: Annotated[
+        Path,
+        typer.Option("--out-qa-sample", help="Output bounded reviewer QA sample CSV."),
+    ] = DEFAULT_FINAL_RELEASE_QA_SAMPLE,
+    min_ranking_total_contexts: Annotated[
+        int,
+        typer.Option(
+            "--min-ranking-total-contexts",
+            help="Minimum citation-context volume for ranking-reversal figure rows.",
+        ),
+    ] = 20,
+    min_ranking_evidence_use_count: Annotated[
+        int,
+        typer.Option(
+            "--min-ranking-evidence-use-count",
+            help="Minimum evidence-use count for ranking-reversal figure rows.",
+        ),
+    ] = 5,
+) -> None:
+    """Generate bounded final-release artifacts from existing local outputs."""
+    try:
+        metrics = run_final_release_analysis(
+            phase2_path=phase2,
+            excluded_path=excluded,
+            failed_diagnostics_path=failed_diagnostics,
+            object_graph_candidates_path=object_graph_candidates,
+            object_mentions_path=object_mentions,
+            contexts_path=contexts,
+            phase1_path=phase1,
+            out_report=out_report,
+            figures_dir=figures_dir,
+            source_data_dir=source_data_dir,
+            out_evidence_cards=out_evidence_cards,
+            out_qa_sample=out_qa_sample,
+            min_ranking_total_contexts=min_ranking_total_contexts,
+            min_ranking_evidence_use_count=min_ranking_evidence_use_count,
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        error_console.print(f"[red]Failed to generate final-release results:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    console.print(
+        f"Final release labels={metrics['analysis_ready_phase2_labels']}; "
+        f"object-use edges={metrics['evidence_backed_object_edges']}; "
+        f"figures={metrics['figure_count']}; "
+        f"source CSVs={metrics['source_csv_count']}. Wrote {out_report}."
     )
 
 

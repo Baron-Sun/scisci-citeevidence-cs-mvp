@@ -1,0 +1,7 @@
+final_intent,rows,mean_confidence,median_confidence,min_confidence,max_confidence,share_below_0_7
+applies,1137,0.9286191732629728,0.94,0.71,0.99,0.0
+background,139823,0.8684177853428978,0.88,0.7,0.99,0.0
+compares_against,27435,0.9258068161108074,0.94,0.7,0.99,0.0
+critiques,6402,0.8934692283661355,0.91,0.7,0.99,0.0
+extends,4763,0.8887864791098049,0.91,0.7,0.99,0.0
+uses,50191,0.9367597776493795,0.95,0.7,0.99,0.0

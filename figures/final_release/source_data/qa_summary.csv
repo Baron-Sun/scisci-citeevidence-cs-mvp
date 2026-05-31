@@ -1,0 +1,13 @@
+metric,value,note
+total_labels,229751.0,
+analysis_ready_rows,229751.0,
+evidence_span_present_rows,229751.0,
+evidence_span_grounded_rows,229751.0,
+evidence_span_not_grounded_rows,0.0,Rows with a non-empty evidence span that is not an exact substring.
+evidence_supports_label_true_rows,229751.0,
+abstain_true_rows,0.0,
+mean_confidence,0.8916188395262697,
+excluded_rows,7946.0,
+remaining_failed_rows,68534.0,
+distinct_final_intents,6.0,
+distinct_sections,18.0,
