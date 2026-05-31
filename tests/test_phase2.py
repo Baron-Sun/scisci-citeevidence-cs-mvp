@@ -216,6 +216,18 @@ def test_phase2_non_null_quote_must_be_in_context() -> None:
         validate_phase2_decision(decision, row)
 
 
+def test_phase2_string_null_quote_is_normalized_to_none() -> None:
+    decision = _valid_decision(
+        problem_or_motivation_quote="null",
+        usage_or_mechanism_quote="none",
+        comparison_or_tradeoff_quote="",
+    )
+
+    assert decision.problem_or_motivation_quote is None
+    assert decision.usage_or_mechanism_quote is None
+    assert decision.comparison_or_tradeoff_quote is None
+
+
 def test_phase2_abstain_rules_are_conservative() -> None:
     with pytest.raises(ValueError, match="confidence"):
         _valid_decision(
@@ -281,6 +293,83 @@ def test_phase2_background_phase1_can_be_corrected_to_uses() -> None:
     validate_phase2_decision(decision, row)
 
 
+def test_phase2_uses_accepts_common_current_paper_use_cues() -> None:
+    row = _queue_row(
+        sentence_text="We follow prior work and initialize the encoder using the BERT model.",
+    )
+    for evidence_span in (
+        "We follow prior work",
+        "using the BERT model",
+        "initialize the encoder using the BERT model",
+    ):
+        validate_phase2_decision(
+            _valid_decision(evidence_span=evidence_span, usage_or_mechanism_quote=evidence_span),
+            row,
+        )
+
+
+def test_phase2_compare_and_extend_accept_common_cue_variants() -> None:
+    compare_row = _queue_row(sentence_text="Our model obtains better F1-wise than Word2Vec.")
+    compare_decision = _valid_decision(
+        final_intent="compares_against",
+        final_object_type="model",
+        final_relation_subtype="compare_against",
+        method_edge_type="compares",
+        evidence_span="better F1-wise than",
+        usage_or_mechanism_quote=None,
+        comparison_or_tradeoff_quote="better F1-wise than",
+    )
+    validate_phase2_decision(compare_decision, compare_row)
+
+    extend_row = _queue_row(sentence_text="We describe our extension of SentEval to GLUE tasks.")
+    extend_decision = _valid_decision(
+        final_intent="extends",
+        final_object_type="benchmark_or_protocol",
+        final_relation_subtype="improve",
+        method_edge_type="extends",
+        evidence_span="our extension of SentEval",
+        usage_or_mechanism_quote="our extension of SentEval",
+    )
+    validate_phase2_decision(extend_decision, extend_row)
+
+    generalize_row = _queue_row(sentence_text="We generalize the idea with a new network.")
+    generalize_decision = _valid_decision(
+        final_intent="extends",
+        final_object_type="model",
+        final_relation_subtype="adapt_to_domain",
+        method_edge_type="extends",
+        evidence_span="We generalize the idea",
+        usage_or_mechanism_quote="We generalize the idea",
+    )
+    validate_phase2_decision(generalize_decision, generalize_row)
+
+    improve_row = _queue_row(sentence_text="We improve significantly over the initial results.")
+    improve_decision = _valid_decision(
+        final_intent="compares_against",
+        final_object_type="metric",
+        final_relation_subtype="compare_against",
+        method_edge_type="improves",
+        evidence_span="improve significantly over",
+        usage_or_mechanism_quote=None,
+        comparison_or_tradeoff_quote="improve significantly over",
+    )
+    validate_phase2_decision(improve_decision, improve_row)
+
+
+def test_phase2_critique_accepts_suffer_from_cue() -> None:
+    row = _queue_row(sentence_text="These models suffer from error propagation.")
+    decision = _valid_decision(
+        final_intent="critiques",
+        final_object_type="model",
+        final_relation_subtype="critique_limitation",
+        method_edge_type="not_method_related",
+        stance="negative",
+        evidence_span="models suffer from error propagation",
+        usage_or_mechanism_quote=None,
+    )
+    validate_phase2_decision(decision, row)
+
+
 def test_phase2_cited_title_only_object_is_not_direct_evidence() -> None:
     row = _queue_row(
         sentence_text="This method improves tagging accuracy.",
@@ -302,6 +391,25 @@ def test_phase2_cited_title_only_object_is_not_direct_evidence() -> None:
 
     with pytest.raises(ValueError, match="cited-title-only"):
         validate_phase2_decision(decision, row)
+
+
+def test_phase2_title_profile_object_type_allowed_with_local_type_cue() -> None:
+    row = _queue_row(
+        sentence_text="We adapt a common technique from NMT.",
+        object_type_source="cited_title_profile",
+        object_names="",
+        graph_candidate_object_names="",
+        cited_title_profile_object_names="BERT",
+    )
+    decision = _valid_decision(
+        final_intent="extends",
+        final_object_type="method",
+        final_relation_subtype="adapt_to_domain",
+        method_edge_type="adapts",
+        evidence_span="We adapt a common technique",
+        usage_or_mechanism_quote="We adapt a common technique",
+    )
+    validate_phase2_decision(decision, row)
 
 
 def test_phase2_report_generation_with_fake_outputs(tmp_path: Path) -> None:

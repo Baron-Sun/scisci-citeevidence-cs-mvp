@@ -10,7 +10,14 @@ from typing import Any, Literal
 
 import pandas as pd
 import pyarrow.parquet as pq
-from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    ValidationError,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 from citeevidence.llm_review import DEFAULT_OPENAI_REVIEW_MODEL, resolve_review_model
 from citeevidence.phase1 import (
@@ -216,10 +223,18 @@ class Phase2StructuredLabel(BaseModel):
         mode="before",
     )
     @classmethod
-    def _strip_text(cls, value: Any) -> Any:
+    def _strip_text(cls, value: Any, info: ValidationInfo) -> Any:
         if value is None:
             return None
-        return str(value).strip()
+        text = str(value).strip()
+        quote_fields = {
+            "problem_or_motivation_quote",
+            "usage_or_mechanism_quote",
+            "comparison_or_tradeoff_quote",
+        }
+        if info.field_name in quote_fields and text.lower() in {"", "null", "none"}:
+            return None
+        return text
 
     @model_validator(mode="after")
     def _abstain_is_conservative(self) -> Phase2StructuredLabel:
@@ -663,7 +678,11 @@ def validate_phase2_decision(decision: Phase2StructuredLabel, row: dict[str, Any
     if decision.final_intent == "applies" and not _has_apply_cue(evidence):
         raise ValueError("final_intent=applies requires apply evidence")
 
-    if _is_cited_title_only_object(row) and decision.final_object_type != "unknown":
+    if (
+        _is_cited_title_only_object(row)
+        and decision.final_object_type != "unknown"
+        and not _local_text_supports_object_type(row, decision.final_object_type)
+    ):
         raise ValueError("cited-title-only object type cannot be used as direct evidence")
 
 
@@ -1476,22 +1495,45 @@ def _has_current_paper_use_cue(text: str) -> bool:
         (
             "we use",
             "we used",
+            "we follow",
+            "we followed",
             "we employ",
             "we employed",
             "we utilize",
             "we utilized",
+            "we apply",
+            "we applied",
+            "we adopt",
+            "we adopted",
+            "we leverage",
+            "we leveraged",
+            "we incorporate",
+            "we incorporated",
+            "we initialize",
+            "we initialized",
+            "we make use of",
+            "we rely on",
             "we train with",
             "we trained with",
             "we evaluate on",
             "we evaluated on",
             "our model uses",
             "our system uses",
+            "using the",
+            "using a",
+            "using an",
+            "using our",
             "in our experiments, we use",
         ),
     )
 
 
 def _has_compare_cue(text: str) -> bool:
+    lowered = text.casefold()
+    if any(cue in lowered for cue in ("better", "worse", "higher", "lower")) and "than" in lowered:
+        return True
+    if "improve" in lowered and "over" in lowered:
+        return True
     return _contains_any(
         text,
         (
@@ -1506,6 +1548,7 @@ def _has_compare_cue(text: str) -> bool:
             " vs ",
             "benchmark",
             "competitive with",
+            "relative to",
         ),
     )
 
@@ -1523,12 +1566,17 @@ def _has_extend_cue(text: str) -> bool:
             "improve",
             "improves",
             "improved",
+            "generalize",
+            "generalizes",
+            "generalized",
             "modify",
             "modified",
             "build upon",
             "builds upon",
             "built upon",
             "variant of",
+            "extension of",
+            "our extension",
         ),
     )
 
@@ -1540,6 +1588,9 @@ def _has_critique_cue(text: str) -> bool:
             "fail",
             "fails",
             "failed",
+            "suffer",
+            "suffers",
+            "suffered",
             "cannot",
             "can not",
             "unable",
@@ -1592,3 +1643,19 @@ def _is_cited_title_only_object(row: dict[str, Any]) -> bool:
         return False
     evidence_text = f"{_clean(row.get('sentence_text'))} {_clean(row.get('context_window_s3'))}"
     return not any(name.casefold() in evidence_text.casefold() for name in profile_names)
+
+
+def _local_text_supports_object_type(row: dict[str, Any], object_type: str) -> bool:
+    text = f"{_clean(row.get('sentence_text'))} {_clean(row.get('context_window_s3'))}".casefold()
+    cues_by_type = {
+        "method": ("method", "technique", "approach", "algorithm", "procedure"),
+        "model": ("model", "architecture", "network", "encoder", "decoder", "embedding"),
+        "dataset_or_database": ("dataset", "data set", "corpus", "treebank", "database"),
+        "software_or_tool": ("tool", "toolkit", "software", "package", "system"),
+        "benchmark_or_protocol": ("benchmark", "protocol", "task", "evaluation"),
+        "metric": ("metric", "score", "accuracy", "f1", "bleu", "rouge", "perplexity"),
+        "task": ("task",),
+        "theory_or_concept": ("theory", "concept", "framework"),
+        "claim_or_finding": ("finding", "result", "claim"),
+    }
+    return any(cue in text for cue in cues_by_type.get(object_type, ()))
