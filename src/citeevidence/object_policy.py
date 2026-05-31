@@ -609,6 +609,7 @@ def _apply_row_policy(
     if object_id == SEQ2SEQ_OBJECT_ID:
         confidence = min(confidence, 0.85)
         if _has_cue(row, SEQ2SEQ_CUES) or "context_cue_present" in match_policy:
+            object_category = "named_object"
             graph_eligible = mention_correct != "false" and graph_eligible
             match_policy = _append_policy(match_policy, "context_cue_present")
             reasons.append("seq2seq_context_cue_present")

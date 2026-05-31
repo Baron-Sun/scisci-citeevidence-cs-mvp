@@ -101,12 +101,17 @@ from citeevidence.object_policy import (
     apply_object_review_policy,
 )
 from citeevidence.objects import (
-    DEFAULT_CITED_TITLE_OBJECT_PROFILES_SAMPLE_PATH,
-    DEFAULT_OBJECT_MATCHING_SAMPLE_REPORT,
+    DEFAULT_BROAD_OBJECT_GRAPH_CANDIDATES_PATH,
+    DEFAULT_CITED_TITLE_OBJECT_PROFILES_PATH,
+    DEFAULT_OBJECT_MATCHING_REPORT,
+    DEFAULT_OBJECT_MENTIONS_PATH,
     DEFAULT_OBJECT_MENTIONS_REVIEW_SAMPLE_PATH,
-    DEFAULT_OBJECT_MENTIONS_SAMPLE_PATH,
     DEFAULT_OBJECT_REGISTRY_PATH,
+    DEFAULT_STRICT_OBJECT_GRAPH_CANDIDATES_PATH,
     match_objects_in_contexts,
+)
+from citeevidence.objects import (
+    DEFAULT_OBJECT_GRAPH_CANDIDATES_PATH as DEFAULT_FULL_OBJECT_GRAPH_CANDIDATES_PATH,
 )
 from citeevidence.review import (
     DEFAULT_MANUAL_REVIEW_CLEAN_PATH,
@@ -926,27 +931,52 @@ def match_objects(
     ] = DEFAULT_OBJECT_REGISTRY_PATH,
     out: Annotated[
         Path,
-        typer.Option("--out", help="Output object mentions sample parquet path."),
-    ] = DEFAULT_OBJECT_MENTIONS_SAMPLE_PATH,
+        typer.Option("--out", help="Output object mentions parquet path."),
+    ] = DEFAULT_OBJECT_MENTIONS_PATH,
     cited_title_profiles: Annotated[
         Path,
         typer.Option(
             "--cited-title-profiles",
-            help="Output cited-title object profile sample parquet path.",
+            help="Output cited-title object profile parquet path.",
         ),
-    ] = DEFAULT_CITED_TITLE_OBJECT_PROFILES_SAMPLE_PATH,
+    ] = DEFAULT_CITED_TITLE_OBJECT_PROFILES_PATH,
+    object_graph_candidates: Annotated[
+        Path,
+        typer.Option(
+            "--object-graph-candidates",
+            help="Output graph-eligible object mentions parquet path.",
+        ),
+    ] = DEFAULT_FULL_OBJECT_GRAPH_CANDIDATES_PATH,
+    strict_object_graph_candidates: Annotated[
+        Path,
+        typer.Option(
+            "--strict-object-graph-candidates",
+            help="Output strict sentence-text graph candidates parquet path.",
+        ),
+    ] = DEFAULT_STRICT_OBJECT_GRAPH_CANDIDATES_PATH,
+    broad_object_graph_candidates: Annotated[
+        Path,
+        typer.Option(
+            "--broad-object-graph-candidates",
+            help="Output broad context-window-neighbor graph candidates parquet path.",
+        ),
+    ] = DEFAULT_BROAD_OBJECT_GRAPH_CANDIDATES_PATH,
     review_sample: Annotated[
         Path,
         typer.Option("--review-sample", help="Output manual object mention review CSV path."),
     ] = DEFAULT_OBJECT_MENTIONS_REVIEW_SAMPLE_PATH,
     report: Annotated[
         Path,
-        typer.Option("--report", help="Output object matching sample report path."),
-    ] = DEFAULT_OBJECT_MATCHING_SAMPLE_REPORT,
+        typer.Option("--report", help="Output object matching report path."),
+    ] = DEFAULT_OBJECT_MATCHING_REPORT,
     limit: Annotated[
-        int,
-        typer.Option("--limit", min=1, help="Maximum context rows to process."),
-    ] = 50_000,
+        int | None,
+        typer.Option(
+            "--limit",
+            min=1,
+            help="Maximum context rows to process. Omit for full matching.",
+        ),
+    ] = None,
 ) -> None:
     """Match seed NLP object mentions in analysis-ready citation contexts."""
     try:
@@ -955,6 +985,9 @@ def match_objects(
             registry_path=registry,
             out_path=out,
             cited_title_profiles_path=cited_title_profiles,
+            object_graph_candidates_path=object_graph_candidates,
+            strict_object_graph_candidates_path=strict_object_graph_candidates,
+            broad_object_graph_candidates_path=broad_object_graph_candidates,
             review_sample_path=review_sample,
             report_path=report,
             limit=limit,
@@ -967,7 +1000,10 @@ def match_objects(
         f"Processed {metrics['input_context_rows_processed']} contexts; "
         f"matched {metrics['total_object_mentions']} object mentions in "
         f"{metrics['contexts_with_at_least_one_object_mention']} contexts. "
-        f"Wrote {out}, {cited_title_profiles}, {review_sample}, and {report}."
+        f"Graph candidates: {metrics['object_graph_candidate_count']}. "
+        f"Wrote {out}, {cited_title_profiles}, {object_graph_candidates}, "
+        f"{strict_object_graph_candidates}, {broad_object_graph_candidates}, "
+        f"{review_sample}, and {report}."
     )
 
 

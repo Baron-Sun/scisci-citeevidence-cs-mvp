@@ -9,7 +9,26 @@ import pandas as pd
 import pyarrow.parquet as pq
 import yaml
 
+from citeevidence.object_policy import (
+    apply_final_policy_to_mentions,
+    build_object_graph_candidates,
+)
+
 DEFAULT_OBJECT_REGISTRY_PATH = Path("configs/object_registry_seed.yaml")
+DEFAULT_OBJECT_MENTIONS_PATH = Path("data/processed/object_mentions.parquet")
+DEFAULT_CITED_TITLE_OBJECT_PROFILES_PATH = Path(
+    "data/processed/cited_title_object_profiles.parquet"
+)
+DEFAULT_OBJECT_GRAPH_CANDIDATES_PATH = Path(
+    "data/processed/object_graph_candidate_mentions.parquet"
+)
+DEFAULT_STRICT_OBJECT_GRAPH_CANDIDATES_PATH = Path(
+    "data/processed/object_graph_candidate_mentions_strict.parquet"
+)
+DEFAULT_BROAD_OBJECT_GRAPH_CANDIDATES_PATH = Path(
+    "data/processed/object_graph_candidate_mentions_broad.parquet"
+)
+DEFAULT_OBJECT_MATCHING_REPORT = Path("reports/object_matching_report.md")
 DEFAULT_OBJECT_MENTIONS_SAMPLE_PATH = Path(
     "data/processed/object_mentions_sample_refined.parquet"
 )
@@ -153,12 +172,15 @@ def match_objects_in_contexts(
     registry_path: str | Path = DEFAULT_OBJECT_REGISTRY_PATH,
     out_path: str | Path = DEFAULT_OBJECT_MENTIONS_SAMPLE_PATH,
     cited_title_profiles_path: str | Path = DEFAULT_CITED_TITLE_OBJECT_PROFILES_SAMPLE_PATH,
+    object_graph_candidates_path: str | Path | None = None,
+    strict_object_graph_candidates_path: str | Path | None = None,
+    broad_object_graph_candidates_path: str | Path | None = None,
     review_sample_path: str | Path = DEFAULT_OBJECT_MENTIONS_REVIEW_SAMPLE_PATH,
     report_path: str | Path = DEFAULT_OBJECT_MATCHING_SAMPLE_REPORT,
-    limit: int = 50_000,
+    limit: int | None = 50_000,
 ) -> dict[str, Any]:
     """Match seed NLP object mentions in analysis-ready citation contexts."""
-    if limit < 1:
+    if limit is not None and limit < 1:
         raise ValueError("limit must be positive")
     contexts_input = Path(contexts_path)
     registry_input = Path(registry_path)
@@ -170,19 +192,59 @@ def match_objects_in_contexts(
     registry = load_object_registry(registry_input)
     contexts = _read_contexts(contexts_input, limit=limit)
     mentions, cited_title_profiles, diagnostics = match_object_mentions(contexts, registry)
+    mentions_with_context = _attach_context_text_for_policy(mentions, contexts)
+    cited_title_profiles_with_context = _attach_context_text_for_policy(
+        cited_title_profiles,
+        contexts,
+    )
+    final_mentions = apply_final_policy_to_mentions(
+        mentions=mentions_with_context,
+        llm_review=pd.DataFrame(),
+        source_table="object_mentions",
+    )
+    final_title_profiles = apply_final_policy_to_mentions(
+        mentions=cited_title_profiles_with_context,
+        llm_review=pd.DataFrame(),
+        source_table="cited_title_object_profiles",
+        force_title_profile_policy=True,
+    )
+    graph_candidates = build_object_graph_candidates(final_mentions)
+    strict_graph_candidates = graph_candidates.loc[
+        graph_candidates["graph_candidate_level"].eq("strict")
+    ].reset_index(drop=True)
+    broad_graph_candidates = graph_candidates.loc[
+        graph_candidates["graph_candidate_level"].eq("broad")
+    ].reset_index(drop=True)
 
     output = Path(out_path)
     output.parent.mkdir(parents=True, exist_ok=True)
-    mentions.to_parquet(output, index=False)
+    final_mentions.to_parquet(output, index=False)
 
     cited_title_output = Path(cited_title_profiles_path)
     cited_title_output.parent.mkdir(parents=True, exist_ok=True)
-    cited_title_profiles.to_parquet(cited_title_output, index=False)
+    final_title_profiles.to_parquet(cited_title_output, index=False)
+
+    graph_output = Path(object_graph_candidates_path) if object_graph_candidates_path else None
+    strict_output = (
+        Path(strict_object_graph_candidates_path) if strict_object_graph_candidates_path else None
+    )
+    broad_output = (
+        Path(broad_object_graph_candidates_path) if broad_object_graph_candidates_path else None
+    )
+    if graph_output is not None:
+        graph_output.parent.mkdir(parents=True, exist_ok=True)
+        graph_candidates.to_parquet(graph_output, index=False)
+    if strict_output is not None:
+        strict_output.parent.mkdir(parents=True, exist_ok=True)
+        strict_graph_candidates.to_parquet(strict_output, index=False)
+    if broad_output is not None:
+        broad_output.parent.mkdir(parents=True, exist_ok=True)
+        broad_graph_candidates.to_parquet(broad_output, index=False)
 
     review_sample = build_object_mentions_review_sample(
         contexts=contexts,
-        mentions=mentions,
-        cited_title_profiles=cited_title_profiles,
+        mentions=final_mentions,
+        cited_title_profiles=final_title_profiles,
     )
     review_sample_output = Path(review_sample_path)
     review_sample_output.parent.mkdir(parents=True, exist_ok=True)
@@ -190,19 +252,27 @@ def match_objects_in_contexts(
 
     metrics = build_object_matching_metrics(
         contexts=contexts,
-        mentions=mentions,
-        cited_title_profiles=cited_title_profiles,
+        mentions=final_mentions,
+        cited_title_profiles=final_title_profiles,
+        graph_candidates=graph_candidates,
+        strict_graph_candidates=strict_graph_candidates,
+        broad_graph_candidates=broad_graph_candidates,
         diagnostics=diagnostics,
         registry=registry,
         limit=limit,
     )
-    report = build_object_matching_report(
+    report = build_full_object_matching_report(
         metrics=metrics,
-        mentions=mentions,
+        mentions=final_mentions,
+        cited_title_profiles=final_title_profiles,
+        graph_candidates=graph_candidates,
         contexts_path=contexts_input,
         registry_path=registry_input,
         out_path=output,
         cited_title_profiles_path=cited_title_output,
+        object_graph_candidates_path=graph_output,
+        strict_object_graph_candidates_path=strict_output,
+        broad_object_graph_candidates_path=broad_output,
         review_sample_path=review_sample_output,
     )
     report_output = Path(report_path)
@@ -326,27 +396,49 @@ def build_object_matching_metrics(
     contexts: pd.DataFrame,
     mentions: pd.DataFrame,
     cited_title_profiles: pd.DataFrame,
+    graph_candidates: pd.DataFrame,
+    strict_graph_candidates: pd.DataFrame,
+    broad_graph_candidates: pd.DataFrame,
     diagnostics: dict[str, Any],
     registry: list[ObjectRegistryEntry],
-    limit: int,
+    limit: int | None,
 ) -> dict[str, Any]:
-    """Build metrics for the object matching sample report."""
+    """Build metrics for object matching reports."""
     contexts_with_mentions = (
         int(mentions["context_id"].nunique(dropna=True)) if not mentions.empty else 0
     )
+    contexts_with_graph_candidates = (
+        int(graph_candidates["context_id"].nunique(dropna=True))
+        if not graph_candidates.empty
+        else 0
+    )
+    policy_checks = build_object_matching_policy_checks(
+        mentions=mentions,
+        graph_candidates=graph_candidates,
+        strict_graph_candidates=strict_graph_candidates,
+        broad_graph_candidates=broad_graph_candidates,
+    )
     return {
+        "total_context_rows_processed": int(len(contexts)),
+        "contexts_with_any_object_mention": contexts_with_mentions,
+        "contexts_with_graph_candidate_mention": contexts_with_graph_candidates,
         "input_context_rows_processed": int(len(contexts)),
-        "limit": limit,
+        "limit": "full" if limit is None else limit,
         "registry_objects": len(registry),
         "raw_mentions_before_deduplication": int(
             diagnostics["raw_context_mentions_before_deduplication"]
         ),
+        "mentions_after_deduplication": int(len(mentions)),
         "deduplicated_mentions_after_deduplication": int(len(mentions)),
         "deduplicated_count": int(diagnostics["deduplicated_count"]),
         "context_mentions_count": int(len(mentions)),
         "cited_title_profile_count": int(len(cited_title_profiles)),
         "contexts_with_at_least_one_object_mention": contexts_with_mentions,
         "total_object_mentions": int(len(mentions)),
+        "object_graph_candidate_count": int(len(graph_candidates)),
+        "strict_graph_candidate_count": int(len(strict_graph_candidates)),
+        "broad_graph_candidate_count": int(len(broad_graph_candidates)),
+        "policy_checks": policy_checks,
         "object_mentions_by_object_type": _value_counts(mentions, ["object_type"], "mentions"),
         "object_mentions_by_object_category": _value_counts(
             mentions,
@@ -358,10 +450,63 @@ def build_object_matching_metrics(
             ["allow_in_object_graph"],
             "mentions",
         ),
+        "object_mentions_by_graph_eligible": _value_counts(
+            mentions,
+            ["graph_eligible"],
+            "mentions",
+        ),
+        "object_mentions_by_phase1_feature_eligible": _value_counts(
+            mentions,
+            ["phase1_feature_eligible"],
+            "mentions",
+        ),
+        "graph_candidates_by_object_type": _value_counts(
+            graph_candidates,
+            ["object_type"],
+            "mentions",
+        ),
+        "graph_candidates_by_object_category": _value_counts(
+            graph_candidates,
+            ["object_category"],
+            "mentions",
+        ),
+        "graph_candidates_by_normalized_section": _value_counts(
+            graph_candidates,
+            ["normalized_section"],
+            "mentions",
+        ),
+        "graph_candidates_by_matched_in": _value_counts(
+            graph_candidates,
+            ["matched_in"],
+            "mentions",
+        ),
+        "cited_title_profiles_by_object_type": _value_counts(
+            cited_title_profiles,
+            ["object_type"],
+            "profiles",
+        ),
         "top_50_matched_objects": _value_counts(
             mentions,
             ["object_id", "canonical_name", "object_type"],
             "mentions",
+            limit=50,
+        ),
+        "top_100_named_objects": _value_counts(
+            mentions.loc[mentions["object_category"].eq("named_object")],
+            ["object_id", "canonical_name", "object_type"],
+            "mentions",
+            limit=100,
+        ),
+        "top_100_graph_candidate_objects": _value_counts(
+            graph_candidates,
+            ["object_id", "canonical_name", "object_type"],
+            "mentions",
+            limit=100,
+        ),
+        "top_50_cited_title_profile_objects": _value_counts(
+            cited_title_profiles,
+            ["object_id", "canonical_name", "object_type"],
+            "profiles",
             limit=50,
         ),
         "top_50_surface_forms": _value_counts(
@@ -381,13 +526,13 @@ def build_object_matching_metrics(
             mentions.loc[mentions["object_category"].eq("generic_metric")],
             ["object_id", "canonical_name", "surface_form"],
             "mentions",
-            limit=20,
+            limit=50,
         ),
         "top_ambiguous_short_alias_matches": _value_counts(
             mentions.loc[mentions["object_category"].eq("ambiguous_short_alias")],
             ["object_id", "canonical_name", "surface_form", "match_policy"],
             "mentions",
-            limit=20,
+            limit=50,
         ),
         "ptb_examples": _surface_examples(mentions, "PTB", 20),
         "generic_metric_examples": _generic_metric_examples(mentions, 20),
@@ -534,6 +679,167 @@ def build_object_matching_report(
         "",
         "## Recommendations",
         _registry_recommendation(metrics, mentions),
+        "",
+    ]
+    return "\n".join(sections)
+
+
+def build_full_object_matching_report(
+    *,
+    metrics: dict[str, Any],
+    mentions: pd.DataFrame,
+    cited_title_profiles: pd.DataFrame,
+    graph_candidates: pd.DataFrame,
+    contexts_path: Path,
+    registry_path: Path,
+    out_path: Path,
+    cited_title_profiles_path: Path,
+    object_graph_candidates_path: Path | None,
+    strict_object_graph_candidates_path: Path | None,
+    broad_object_graph_candidates_path: Path | None,
+    review_sample_path: Path,
+) -> str:
+    """Build the full object matching report for Task 8B."""
+    core = pd.DataFrame(
+        [
+            {
+                "metric": "total_context_rows_processed",
+                "value": metrics["total_context_rows_processed"],
+            },
+            {
+                "metric": "contexts_with_any_object_mention",
+                "value": metrics["contexts_with_any_object_mention"],
+            },
+            {
+                "metric": "contexts_with_graph_candidate_mention",
+                "value": metrics["contexts_with_graph_candidate_mention"],
+            },
+            {
+                "metric": "raw_mentions_before_deduplication",
+                "value": metrics["raw_mentions_before_deduplication"],
+            },
+            {
+                "metric": "mentions_after_deduplication",
+                "value": metrics["mentions_after_deduplication"],
+            },
+            {"metric": "deduplicated_count", "value": metrics["deduplicated_count"]},
+            {
+                "metric": "cited_title_profile_count",
+                "value": metrics["cited_title_profile_count"],
+            },
+            {
+                "metric": "object_graph_candidate_count",
+                "value": metrics["object_graph_candidate_count"],
+            },
+            {
+                "metric": "strict_graph_candidate_count",
+                "value": metrics["strict_graph_candidate_count"],
+            },
+            {
+                "metric": "broad_graph_candidate_count",
+                "value": metrics["broad_graph_candidate_count"],
+            },
+        ]
+    )
+    sections = [
+        "# Object Matching Report",
+        "",
+        "## Inputs",
+        f"- Contexts: `{contexts_path}`",
+        f"- Registry: `{registry_path}`",
+        f"- Configured limit: `{metrics['limit']}`",
+        "",
+        "## Outputs",
+        f"- Object mentions: `{out_path}`",
+        f"- Cited-title object profiles: `{cited_title_profiles_path}`",
+        f"- Object graph candidates: `{object_graph_candidates_path or 'not written'}`",
+        f"- Strict graph candidates: `{strict_object_graph_candidates_path or 'not written'}`",
+        f"- Broad graph candidates: `{broad_object_graph_candidates_path or 'not written'}`",
+        f"- Review sample: `{review_sample_path}`",
+        "",
+        "## Core Counts",
+        _table(core),
+        "",
+        "## Mentions By Object Type",
+        _table(metrics["object_mentions_by_object_type"]),
+        "",
+        "## Mentions By Object Category",
+        _table(metrics["object_mentions_by_object_category"]),
+        "",
+        "## Mentions By allow_in_object_graph",
+        _table(metrics["object_mentions_by_allow_in_object_graph"]),
+        "",
+        "## Mentions By graph_eligible",
+        _table(metrics["object_mentions_by_graph_eligible"]),
+        "",
+        "## Mentions By phase1_feature_eligible",
+        _table(metrics["object_mentions_by_phase1_feature_eligible"]),
+        "",
+        "## Graph Candidates By Object Type",
+        _table(metrics["graph_candidates_by_object_type"]),
+        "",
+        "## Graph Candidates By Object Category",
+        _table(metrics["graph_candidates_by_object_category"]),
+        "",
+        "## Graph Candidates By Normalized Section",
+        _table(metrics["graph_candidates_by_normalized_section"]),
+        "",
+        "## Graph Candidates By Matched In",
+        _table(metrics["graph_candidates_by_matched_in"]),
+        "",
+        "## Cited Title Profiles By Object Type",
+        _table(metrics["cited_title_profiles_by_object_type"]),
+        "",
+        "## Top 100 Named Objects By Mention Count",
+        _table(metrics["top_100_named_objects"]),
+        "",
+        "## Top 100 Graph Candidate Objects",
+        _table(metrics["top_100_graph_candidate_objects"]),
+        "",
+        "## Top 50 Generic Metrics",
+        _table(metrics["top_generic_metrics"]),
+        "",
+        "## Top 50 Ambiguous Aliases",
+        _table(metrics["top_ambiguous_short_alias_matches"]),
+        "",
+        "## Top 50 Cited-Title Profile Objects",
+        _table(metrics["top_50_cited_title_profile_objects"]),
+        "",
+        "## Top 50 Surface Forms",
+        _table(metrics["top_50_surface_forms"]),
+        "",
+        "## Policy Checks",
+        _table(metrics["policy_checks"]),
+        "",
+        "## original_allow_in_object_graph=False but graph_eligible=True Examples",
+        _table(_original_false_graph_true_examples(mentions, 20)),
+        "",
+        "## Named Object Strict Candidate Examples",
+        _table(_policy_examples(_named_strict_candidates(graph_candidates), 20)),
+        "",
+        "## Named Object Broad Candidate Examples",
+        _table(_policy_examples(_named_broad_candidates(graph_candidates), 20)),
+        "",
+        "## Generic Metric Feature-Only Examples",
+        _table(_policy_examples(_generic_feature_only(mentions), 20)),
+        "",
+        "## PTB With Cue Examples",
+        _table(_policy_examples(_ptb_with_cue(mentions), 20)),
+        "",
+        "## PTB Without Cue / Downgraded Examples",
+        _table(_policy_examples(_ptb_without_cue(mentions), 20)),
+        "",
+        "## Uppercase Transformer Examples",
+        _table(_policy_examples(_uppercase_transformer(mentions), 20)),
+        "",
+        "## Lowercase transformer Downgraded Examples",
+        _table(_policy_examples(_lowercase_transformer_downgraded(mentions), 20)),
+        "",
+        "## seq2seq Kept / Downgraded Examples",
+        _table(_policy_examples(_seq2seq_examples(mentions), 20)),
+        "",
+        "## Cited-Title Object Profile Examples",
+        _table(_policy_examples(cited_title_profiles, 20)),
         "",
     ]
     return "\n".join(sections)
@@ -712,15 +1018,18 @@ def _alias_pattern(normalized_alias: str) -> re.Pattern[str]:
     return re.compile(rf"(?<![a-z0-9+#]){pattern}(?![a-z0-9+#])")
 
 
-def _read_contexts(path: Path, *, limit: int) -> pd.DataFrame:
+def _read_contexts(path: Path, *, limit: int | None) -> pd.DataFrame:
     parquet_file = pq.ParquetFile(path)
     available_columns = set(parquet_file.schema_arrow.names)
     columns = [column for column in CONTEXT_READ_COLUMNS if column in available_columns]
     batches = []
     remaining = limit
-    for batch in parquet_file.iter_batches(batch_size=min(50_000, limit), columns=columns):
-        take = min(remaining, batch.num_rows)
+    batch_size = 50_000 if limit is None else min(50_000, limit)
+    for batch in parquet_file.iter_batches(batch_size=batch_size, columns=columns):
+        take = batch.num_rows if remaining is None else min(remaining, batch.num_rows)
         batches.append(batch.slice(0, take).to_pandas())
+        if remaining is None:
+            continue
         remaining -= take
         if remaining <= 0:
             break
@@ -1077,12 +1386,204 @@ def _sample_mentions(mentions: pd.DataFrame, limit: int) -> pd.DataFrame:
     return sample
 
 
+def build_object_matching_policy_checks(
+    *,
+    mentions: pd.DataFrame,
+    graph_candidates: pd.DataFrame,
+    strict_graph_candidates: pd.DataFrame,
+    broad_graph_candidates: pd.DataFrame,
+) -> pd.DataFrame:
+    """Return Task 8B policy consistency checks."""
+    checks = [
+        (
+            "generic_metric rows in object_graph_candidate_mentions",
+            _count_rows(graph_candidates, graph_candidates["object_category"].eq("generic_metric")),
+        ),
+        (
+            "accuracy rows in object_graph_candidate_mentions",
+            _count_rows(graph_candidates, graph_candidates["object_id"].eq("obj_accuracy")),
+        ),
+        (
+            "F1 rows in object_graph_candidate_mentions",
+            _count_rows(graph_candidates, graph_candidates["object_id"].eq("obj_f1")),
+        ),
+        (
+            "perplexity rows in object_graph_candidate_mentions",
+            _count_rows(graph_candidates, graph_candidates["object_id"].eq("obj_perplexity")),
+        ),
+        (
+            "resolved_cited_title rows in object_mentions",
+            _count_rows(mentions, mentions["matched_in"].eq("resolved_cited_title")),
+        ),
+        (
+            "resolved_cited_title rows in object_graph_candidate_mentions",
+            _count_rows(
+                graph_candidates,
+                graph_candidates["matched_in"].eq("resolved_cited_title"),
+            ),
+        ),
+        (
+            "strict candidates with matched_in != sentence_text",
+            _count_rows(
+                strict_graph_candidates,
+                ~strict_graph_candidates["matched_in"].eq("sentence_text"),
+            ),
+        ),
+        (
+            "broad candidates with matched_in != context_window_neighbor",
+            _count_rows(
+                broad_graph_candidates,
+                ~broad_graph_candidates["matched_in"].eq("context_window_neighbor"),
+            ),
+        ),
+        (
+            "ambiguous_short_alias rows in strict graph candidates",
+            _count_rows(
+                strict_graph_candidates,
+                strict_graph_candidates["object_category"].eq("ambiguous_short_alias"),
+            ),
+        ),
+    ]
+    rows = [
+        {"policy_check": name, "rows": rows, "status": "pass" if rows == 0 else "fail"}
+        for name, rows in checks
+    ]
+    review_count = _count_rows(
+        mentions,
+        (~mentions["original_allow_in_object_graph"].map(_bool_value))
+        & mentions["graph_eligible"].map(_bool_value),
+    )
+    rows.append(
+        {
+            "policy_check": "original_allow_in_object_graph=False but graph_eligible=True",
+            "rows": review_count,
+            "status": "review",
+        }
+    )
+    return pd.DataFrame(rows)
+
+
+def _policy_examples(frame: pd.DataFrame, limit: int) -> pd.DataFrame:
+    columns = [
+        "context_id",
+        "source_context_id",
+        "canonical_name",
+        "object_type",
+        "object_category",
+        "surface_form",
+        "confidence",
+        "matched_in",
+        "allow_in_object_graph",
+        "graph_eligible",
+        "phase1_feature_eligible",
+        "graph_candidate_level",
+        "policy_reason",
+        "match_policy",
+        "normalized_section",
+        "resolved_cited_title",
+    ]
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+    sample = _ensure_columns(frame.head(limit).copy(), columns)
+    for column in ("resolved_cited_title", "policy_reason", "match_policy"):
+        sample[column] = sample[column].map(lambda value: _truncate(value, 140))
+    return sample[columns]
+
+
+def _original_false_graph_true_examples(mentions: pd.DataFrame, limit: int) -> pd.DataFrame:
+    if mentions.empty:
+        return pd.DataFrame()
+    mask = (~mentions["original_allow_in_object_graph"].map(_bool_value)) & mentions[
+        "graph_eligible"
+    ].map(_bool_value)
+    return _policy_examples(mentions.loc[mask], limit)
+
+
+def _named_strict_candidates(graph_candidates: pd.DataFrame) -> pd.DataFrame:
+    return graph_candidates.loc[
+        graph_candidates["object_category"].eq("named_object")
+        & graph_candidates["graph_candidate_level"].eq("strict")
+    ]
+
+
+def _named_broad_candidates(graph_candidates: pd.DataFrame) -> pd.DataFrame:
+    return graph_candidates.loc[
+        graph_candidates["object_category"].eq("named_object")
+        & graph_candidates["graph_candidate_level"].eq("broad")
+    ]
+
+
+def _generic_feature_only(mentions: pd.DataFrame) -> pd.DataFrame:
+    return mentions.loc[
+        mentions["object_category"].eq("generic_metric")
+        & mentions["phase1_feature_eligible"].map(_bool_value)
+        & (~mentions["graph_eligible"].map(_bool_value))
+    ]
+
+
+def _ptb_with_cue(mentions: pd.DataFrame) -> pd.DataFrame:
+    return mentions.loc[
+        mentions["object_id"].eq("obj_penn_treebank")
+        & mentions["policy_reason"].fillna("").astype(str).str.contains("cue_present")
+    ]
+
+
+def _ptb_without_cue(mentions: pd.DataFrame) -> pd.DataFrame:
+    return mentions.loc[
+        mentions["object_id"].eq("obj_penn_treebank")
+        & mentions["policy_reason"].fillna("").astype(str).str.contains("cue_missing")
+    ]
+
+
+def _uppercase_transformer(mentions: pd.DataFrame) -> pd.DataFrame:
+    transformer = mentions.loc[mentions["object_id"].eq("obj_transformer")]
+    return transformer.loc[transformer["surface_form"].fillna("").astype(str).str.startswith("T")]
+
+
+def _lowercase_transformer_downgraded(mentions: pd.DataFrame) -> pd.DataFrame:
+    transformer = mentions.loc[mentions["object_id"].eq("obj_transformer")]
+    return transformer.loc[
+        transformer["surface_form"].fillna("").astype(str).str.startswith("t")
+        & transformer["policy_reason"].fillna("").astype(str).str.contains("feature_only")
+    ]
+
+
+def _seq2seq_examples(mentions: pd.DataFrame) -> pd.DataFrame:
+    return mentions.loc[mentions["object_id"].eq("obj_seq2seq")]
+
+
+def _count_rows(frame: pd.DataFrame, mask: pd.Series) -> int:
+    if frame.empty:
+        return 0
+    return int(mask.sum())
+
+
 def _sample_frame(frame: pd.DataFrame, n: int, seed: int) -> pd.DataFrame:
     if frame.empty or n <= 0:
         return pd.DataFrame(columns=frame.columns)
     if len(frame) <= n:
         return frame.sample(frac=1, random_state=seed).reset_index(drop=True)
     return frame.sample(n=n, random_state=seed).reset_index(drop=True)
+
+
+def _attach_context_text_for_policy(mentions: pd.DataFrame, contexts: pd.DataFrame) -> pd.DataFrame:
+    if mentions.empty:
+        return mentions.copy()
+    context_columns = [
+        "context_id",
+        "source_context_id",
+        "sentence_text",
+        "context_window_s3",
+    ]
+    context_frame = _ensure_columns(contexts.copy(), context_columns)
+    context_frame = context_frame[context_columns].drop_duplicates(
+        subset=["context_id", "source_context_id"]
+    )
+    return mentions.merge(
+        context_frame,
+        on=["context_id", "source_context_id"],
+        how="left",
+    )
 
 
 def _value_counts(
@@ -1159,6 +1660,14 @@ def _clean_text(value: Any) -> str:
     if value is None or pd.isna(value):
         return ""
     return str(value).strip()
+
+
+def _bool_value(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None or pd.isna(value):
+        return False
+    return str(value).strip().lower() in {"true", "1", "yes"}
 
 
 def _clean_text_or_none(value: Any) -> str | None:

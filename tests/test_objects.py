@@ -390,7 +390,7 @@ objects:
     assert pd.read_parquet(out_path)["context_id"].nunique() == 1
     assert pd.read_parquet(cited_title_profiles_path).shape[0] == 1
     assert pd.read_csv(review_sample_path).shape[0] >= 1
-    assert "## Core Metrics" in report_path.read_text(encoding="utf-8")
+    assert "## Core Counts" in report_path.read_text(encoding="utf-8")
 
     runner = CliRunner()
     cli_out = tmp_path / "cli_mentions.parquet"
@@ -425,6 +425,203 @@ objects:
     assert cli_profiles.exists()
     assert cli_review.exists()
     assert cli_report.exists()
+
+
+def test_match_objects_full_mode_outputs_graph_candidates_and_policy_checks(
+    tmp_path: Path,
+) -> None:
+    contexts_path = tmp_path / "contexts.parquet"
+    registry_path = tmp_path / "registry.yaml"
+    out_path = tmp_path / "object_mentions.parquet"
+    cited_title_profiles_path = tmp_path / "cited_title_object_profiles.parquet"
+    graph_path = tmp_path / "object_graph_candidate_mentions.parquet"
+    strict_path = tmp_path / "object_graph_candidate_mentions_strict.parquet"
+    broad_path = tmp_path / "object_graph_candidate_mentions_broad.parquet"
+    review_sample_path = tmp_path / "review.csv"
+    report_path = tmp_path / "object_matching_report.md"
+    pd.DataFrame(
+        [
+            _context_row("ctx_bert", "We use BERT.", resolved_cited_title="A BERT Paper"),
+            _context_row("ctx_metric", "We report accuracy and F1."),
+            _context_row("ctx_ptb_cue", "We train on Penn Treebank (PTB) corpus."),
+            _context_row("ctx_ptb_no_cue", "We use PTB in preprocessing."),
+            _context_row("ctx_upper_transformer", "We use Transformer layers."),
+            _context_row("ctx_lower_transformer", "The transformer layer is generic."),
+            _context_row("ctx_seq2seq", "We add seq2seq."),
+            _context_row("ctx_bleu", "We optimize BLEU."),
+            {
+                **_context_row(
+                    "ctx_neighbor",
+                    "This sentence cites prior work.",
+                    resolved_cited_title="No object in title",
+                ),
+                "context_window_s3": (
+                    "Earlier context mentions BERT. This sentence cites prior work."
+                ),
+            },
+            _context_row(
+                "ctx_title_only",
+                "This sentence has no object mention.",
+                resolved_cited_title="BERT: Pre-training of Deep Bidirectional Transformers",
+            ),
+        ]
+    ).to_parquet(contexts_path, index=False)
+    registry_path.write_text(
+        """
+objects:
+  - object_id: obj_bert
+    canonical_name: BERT
+    aliases: [BERT]
+    negative_aliases: []
+    object_type: model
+    linked_paper_title:
+    linked_acl_id:
+    linked_doi:
+    source: fixture
+    notes: fixture
+    allow_short_alias: false
+  - object_id: obj_accuracy
+    canonical_name: accuracy
+    aliases: [accuracy]
+    negative_aliases: []
+    object_type: metric
+    linked_paper_title:
+    linked_acl_id:
+    linked_doi:
+    source: fixture
+    notes: generic metric
+    allow_short_alias: false
+    object_category: generic_metric
+    allow_in_object_graph: false
+    confidence_override: 0.7
+  - object_id: obj_f1
+    canonical_name: F1
+    aliases: [F1]
+    negative_aliases: []
+    object_type: metric
+    linked_paper_title:
+    linked_acl_id:
+    linked_doi:
+    source: fixture
+    notes: generic metric
+    allow_short_alias: true
+    require_case_sensitive: true
+    object_category: generic_metric
+    allow_in_object_graph: false
+    confidence_override: 0.7
+  - object_id: obj_perplexity
+    canonical_name: perplexity
+    aliases: [perplexity]
+    negative_aliases: []
+    object_type: metric
+    linked_paper_title:
+    linked_acl_id:
+    linked_doi:
+    source: fixture
+    notes: generic metric
+    allow_short_alias: false
+    object_category: generic_metric
+    allow_in_object_graph: false
+    confidence_override: 0.7
+  - object_id: obj_penn_treebank
+    canonical_name: Penn Treebank
+    aliases: [Penn Treebank, PTB]
+    negative_aliases: []
+    object_type: dataset_or_database
+    linked_paper_title:
+    linked_acl_id:
+    linked_doi:
+    source: fixture
+    notes: cue controlled
+    allow_short_alias: false
+    require_context_cue: [Penn Treebank, treebank, corpus, WSJ, dataset]
+  - object_id: obj_transformer
+    canonical_name: Transformer
+    aliases: [Transformer]
+    negative_aliases: []
+    object_type: model
+    linked_paper_title:
+    linked_acl_id:
+    linked_doi:
+    source: fixture
+    notes: fixture
+    allow_short_alias: false
+  - object_id: obj_seq2seq
+    canonical_name: seq2seq
+    aliases: [seq2seq]
+    negative_aliases: []
+    object_type: model
+    linked_paper_title:
+    linked_acl_id:
+    linked_doi:
+    source: fixture
+    notes: cue controlled
+    allow_short_alias: false
+    require_context_cue: [model, architecture, encoder-decoder, sequence-to-sequence, neural]
+    confidence_override: 0.85
+  - object_id: obj_bleu
+    canonical_name: BLEU
+    aliases: [BLEU]
+    negative_aliases: []
+    object_type: metric
+    linked_paper_title:
+    linked_acl_id:
+    linked_doi:
+    source: fixture
+    notes: named metric
+    allow_short_alias: false
+""",
+        encoding="utf-8",
+    )
+
+    metrics = match_objects_in_contexts(
+        contexts_path=contexts_path,
+        registry_path=registry_path,
+        out_path=out_path,
+        cited_title_profiles_path=cited_title_profiles_path,
+        object_graph_candidates_path=graph_path,
+        strict_object_graph_candidates_path=strict_path,
+        broad_object_graph_candidates_path=broad_path,
+        review_sample_path=review_sample_path,
+        report_path=report_path,
+        limit=None,
+    )
+
+    mentions = pd.read_parquet(out_path)
+    profiles = pd.read_parquet(cited_title_profiles_path)
+    graph = pd.read_parquet(graph_path)
+    strict = pd.read_parquet(strict_path)
+    broad = pd.read_parquet(broad_path)
+    report = report_path.read_text(encoding="utf-8")
+
+    assert metrics["total_context_rows_processed"] == 10
+    assert "total_context_rows_processed" in report
+    assert "contexts_with_any_object_mention" in report
+    assert "graph_eligible" in mentions.columns
+    assert "phase1_feature_eligible" in mentions.columns
+    assert "graph_candidate_level" in mentions.columns
+    assert not graph["object_category"].eq("generic_metric").any()
+    assert not graph["object_id"].isin(["obj_accuracy", "obj_f1", "obj_perplexity"]).any()
+    assert not mentions["matched_in"].eq("resolved_cited_title").any()
+    assert not graph["matched_in"].eq("resolved_cited_title").any()
+    assert set(strict["matched_in"]) <= {"sentence_text"}
+    assert set(broad["matched_in"]) <= {"context_window_neighbor"}
+    assert profiles["matched_in"].eq("resolved_cited_title").any()
+    assert metrics["deduplicated_count"] >= 1
+
+    ptb_cue = mentions.loc[
+        mentions["context_id"].eq("ctx_ptb_cue") & mentions["surface_form"].eq("PTB")
+    ].iloc[0]
+    ptb_no_cue = mentions.loc[
+        mentions["context_id"].eq("ctx_ptb_no_cue") & mentions["surface_form"].eq("PTB")
+    ].iloc[0]
+    lower_transformer = mentions.loc[
+        mentions["context_id"].eq("ctx_lower_transformer")
+    ].iloc[0]
+
+    assert bool(ptb_cue["graph_eligible"])
+    assert not bool(ptb_no_cue["graph_eligible"])
+    assert not bool(lower_transformer["graph_eligible"])
 
 
 def test_seed_registry_loads() -> None:
