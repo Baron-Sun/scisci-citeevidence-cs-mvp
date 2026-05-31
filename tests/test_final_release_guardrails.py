@@ -45,6 +45,19 @@ def test_forbidden_claims_are_caught() -> None:
     assert "intern_atlas_scale_graph" in findings
 
 
+def test_negated_intern_atlas_scale_caveat_is_allowed() -> None:
+    text = (
+        "Current outputs are not a complete NLP method evolution graph "
+        "or Intern-Atlas-scale graph."
+    )
+
+    assert "intern_atlas_scale_graph" not in validate_forbidden_claims(text)
+    assert "complete_method_evolution_graph" not in validate_forbidden_claims(text)
+    assert "intern_atlas_scale_graph" in validate_forbidden_claims(
+        "The project builds an Intern-Atlas-scale graph."
+    )
+
+
 def test_citation_context_volume_terms() -> None:
     assert validate_citation_context_volume_terms("citation-context volume rank") == []
     assert "citation_count" in validate_citation_context_volume_terms(

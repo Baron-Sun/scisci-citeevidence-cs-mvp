@@ -131,7 +131,7 @@ def _has_not_method_evolution_graph_caveat(text: str) -> bool:
 
 def _contains_unqualified_phrase(text: str, phrase: str) -> bool:
     for match in re.finditer(re.escape(phrase), text):
-        prefix = text[max(0, match.start() - 32) : match.start()]
+        prefix = text[max(0, match.start() - 96) : match.start()]
         if any(marker in prefix for marker in ["not ", "no ", "never ", "do not ", "don't "]):
             continue
         return True
