@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 INTENT_ORDER = (
@@ -29,6 +30,125 @@ OPTIONAL_PAPER_COLUMNS = ["resolved_cited_year", "resolved_cited_authors"]
 def safe_rate(numerator: int | float, denominator: int | float) -> float:
     """Return a numeric rate with zero-denominator protection."""
     return float(numerator / denominator) if denominator else 0.0
+
+
+def format_section_label(section: str, total: int) -> str:
+    """Format a readable section label with compact row count."""
+    section_name = _clean(section) or "unknown"
+    readable = section_name.replace("_", " ").replace("-", " ").title()
+    return f"{readable} (N={_format_compact_count(total)})"
+
+
+def build_section_function_counts(labels: pd.DataFrame) -> pd.DataFrame:
+    """Build tidy section-by-function counts from final analysis-ready labels."""
+    columns = _section_function_columns(include_lift=False)
+    frame = _ensure_columns(labels.copy(), ["normalized_section", "final_intent"])
+    frame = _clean_text_columns(frame, ["normalized_section", "final_intent"])
+    frame["normalized_section"] = frame["normalized_section"].replace("", "unknown")
+    frame = frame.loc[frame["final_intent"].ne("")].copy()
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+
+    observed = (
+        frame.groupby(["normalized_section", "final_intent"], dropna=False)
+        .size()
+        .reset_index(name="rows")
+    )
+    sections = _ordered_sections(frame["normalized_section"].unique())
+    intents = _ordered_intents(frame["final_intent"].unique())
+    grid = pd.MultiIndex.from_product(
+        [sections, intents],
+        names=["normalized_section", "final_intent"],
+    ).to_frame(index=False)
+    counts = grid.merge(observed, on=["normalized_section", "final_intent"], how="left")
+    counts["rows"] = counts["rows"].fillna(0).astype(int)
+
+    section_totals = (
+        frame.groupby("normalized_section", dropna=False)
+        .size()
+        .reset_index(name="section_total")
+    )
+    intent_totals = (
+        frame.groupby("final_intent", dropna=False)
+        .size()
+        .reset_index(name="intent_total")
+    )
+    counts = counts.merge(section_totals, on="normalized_section", how="left")
+    counts = counts.merge(intent_totals, on="final_intent", how="left")
+    counts["grand_total"] = len(frame)
+    numeric_columns = ["section_total", "intent_total", "grand_total"]
+    counts[numeric_columns] = counts[numeric_columns].fillna(0).astype(int)
+    counts["row_share"] = _safe_series_rate(counts["rows"], counts["section_total"])
+    counts["global_share"] = _safe_series_rate(counts["intent_total"], counts["grand_total"])
+    counts["is_unknown_section"] = counts["normalized_section"].eq("unknown")
+    counts["section_label"] = [
+        format_section_label(section, int(total))
+        for section, total in zip(
+            counts["normalized_section"],
+            counts["section_total"],
+            strict=True,
+        )
+    ]
+    counts["_section_order"] = counts["normalized_section"].map(
+        {section: index for index, section in enumerate(sections)}
+    )
+    counts["_intent_order"] = counts["final_intent"].map(
+        {intent: index for index, intent in enumerate(intents)}
+    )
+    counts = counts.sort_values(["_section_order", "_intent_order"]).drop(
+        columns=["_section_order", "_intent_order"]
+    )
+    return counts[columns].reset_index(drop=True)
+
+
+def build_section_function_lift(
+    counts: pd.DataFrame,
+    min_section_total: int = 100,
+    smoothing: float = 0.5,
+) -> pd.DataFrame:
+    """Compute section-function log-odds lift from section count cells."""
+    columns = _section_function_columns(include_lift=True)
+    frame = _ensure_columns(counts.copy(), _section_function_columns(include_lift=False))
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+
+    for column in ["rows", "section_total", "intent_total", "grand_total"]:
+        frame[column] = pd.to_numeric(frame[column], errors="coerce").fillna(0)
+    if "is_unknown_section" not in counts:
+        frame["is_unknown_section"] = _clean_text_columns(
+            frame[["normalized_section"]].copy(),
+            ["normalized_section"],
+        )["normalized_section"].eq("unknown")
+    else:
+        frame["is_unknown_section"] = frame["is_unknown_section"].map(_parse_bool)
+    frame = frame.loc[
+        frame["is_unknown_section"] | frame["section_total"].ge(min_section_total)
+    ].copy()
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+
+    rows = frame["rows"]
+    section_total = frame["section_total"]
+    intent_total = frame["intent_total"]
+    grand_total = frame["grand_total"]
+    section_log_odds = np.log(
+        (rows + smoothing)
+        / ((section_total - rows).clip(lower=0) + smoothing)
+    )
+    global_log_odds = np.log(
+        (intent_total + smoothing)
+        / ((grand_total - intent_total).clip(lower=0) + smoothing)
+    )
+    frame["log_odds_lift"] = section_log_odds - global_log_odds
+    frame["lift_direction"] = np.select(
+        [frame["log_odds_lift"].gt(0), frame["log_odds_lift"].lt(0)],
+        ["overrepresented", "underrepresented"],
+        default="baseline",
+    )
+    frame["rows"] = frame["rows"].astype(int)
+    for column in ["section_total", "intent_total", "grand_total"]:
+        frame[column] = frame[column].astype(int)
+    return frame[columns].reset_index(drop=True)
 
 
 def build_paper_evidence_use_table(contexts: pd.DataFrame, labels: pd.DataFrame) -> pd.DataFrame:
@@ -216,6 +336,24 @@ def _paper_evidence_use_columns(*, include_optional: bool) -> list[str]:
     ]
 
 
+def _section_function_columns(*, include_lift: bool) -> list[str]:
+    columns = [
+        "normalized_section",
+        "final_intent",
+        "rows",
+        "section_total",
+        "intent_total",
+        "grand_total",
+        "row_share",
+        "global_share",
+        "is_unknown_section",
+        "section_label",
+    ]
+    if include_lift:
+        columns.extend(["log_odds_lift", "lift_direction"])
+    return columns
+
+
 def _label_count_columns() -> list[str]:
     return [*INTENT_COUNT_COLUMNS.values(), "labeled_contexts"]
 
@@ -242,6 +380,46 @@ def _clean(value: Any) -> str:
     except (TypeError, ValueError):
         return str(value).strip()
     return str(value).strip()
+
+
+def _parse_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    try:
+        if pd.isna(value):
+            return False
+    except (TypeError, ValueError):
+        pass
+    if isinstance(value, int | float):
+        return value != 0
+    return str(value).strip().casefold() in {"1", "t", "true", "y", "yes"}
+
+
+def _ordered_intents(intents: Any) -> list[str]:
+    cleaned = {_clean(intent) for intent in intents}
+    cleaned.discard("")
+    ordered = [intent for intent in INTENT_ORDER if intent in cleaned]
+    ordered.extend(sorted(cleaned.difference(INTENT_ORDER)))
+    return ordered
+
+
+def _ordered_sections(sections: Any) -> list[str]:
+    cleaned = {_clean(section) or "unknown" for section in sections}
+    section_totals = {section: 0 for section in cleaned}
+    return sorted(
+        cleaned,
+        key=lambda section: (section == "unknown", section_totals[section], section),
+    )
+
+
+def _format_compact_count(total: int) -> str:
+    if total >= 1_000_000:
+        return f"{total / 1_000_000:.1f}M"
+    if total >= 1_000:
+        return f"{total / 1_000:.1f}k"
+    return str(total)
 
 
 def _first_non_empty(values: pd.Series) -> str:
