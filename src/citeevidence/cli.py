@@ -145,6 +145,15 @@ from citeevidence.phase1_llm_review import (
     DEFAULT_PHASE1_LLM_REVIEW_SAMPLE_PATH,
     run_phase1_llm_review,
 )
+from citeevidence.phase2 import (
+    DEFAULT_PHASE2_CACHE_DIR,
+    DEFAULT_PHASE2_REVIEW_SAMPLE_PATH,
+    DEFAULT_PHASE2_STRUCTURED_FAILED_PATH,
+    DEFAULT_PHASE2_STRUCTURED_JSONL_PATH,
+    DEFAULT_PHASE2_STRUCTURED_PARQUET_PATH,
+    DEFAULT_PHASE2_STRUCTURED_REPORT,
+    run_phase2_structured_extraction,
+)
 from citeevidence.review import (
     DEFAULT_MANUAL_REVIEW_CLEAN_PATH,
     DEFAULT_MANUAL_REVIEW_NEEDS_CHECK_PATH,
@@ -169,6 +178,10 @@ phase1_app = typer.Typer(
     help="Screen citation-function candidates with rule-based Phase-1 cues.",
     no_args_is_help=True,
 )
+phase2_app = typer.Typer(
+    help="Run Phase-2 LLM structured evidence extraction.",
+    no_args_is_help=True,
+)
 review_app = typer.Typer(
     help="Ingest review files and run model-based audits.",
     no_args_is_help=True,
@@ -185,6 +198,7 @@ app.add_typer(contexts_app, name="contexts")
 app.add_typer(datasets_app, name="datasets")
 app.add_typer(objects_app, name="objects")
 app.add_typer(phase1_app, name="phase1")
+app.add_typer(phase2_app, name="phase2")
 app.add_typer(review_app, name="review")
 
 
@@ -1197,6 +1211,114 @@ def screen_phase1(
         f"({metrics['should_send_to_llm_rate']:.1%}) for LLM review. "
         f"Wrote {out_candidates}, {out_features}, {out_llm_high}, "
         f"{out_llm_medium}, {out_llm_sample}, and {report}."
+    )
+
+
+@phase2_app.command("extract-structured")
+def extract_phase2_structured(
+    queue: Annotated[
+        Path,
+        typer.Option("--queue", help="Path to Phase-1 LLM queue sample parquet."),
+    ] = DEFAULT_PHASE1_LLM_QUEUE_SAMPLE_PATH,
+    candidates: Annotated[
+        Path,
+        typer.Option("--candidates", help="Path to full Phase-1 candidates parquet."),
+    ] = DEFAULT_PHASE1_CANDIDATES_FULL_PATH,
+    features: Annotated[
+        Path,
+        typer.Option("--features", help="Path to full Phase-1 context features parquet."),
+    ] = DEFAULT_PHASE1_FEATURES_FULL_PATH,
+    contexts: Annotated[
+        Path,
+        typer.Option("--contexts", help="Path to analysis-ready strong contexts parquet."),
+    ] = DEFAULT_PHASE1_CONTEXTS_PATH,
+    object_mentions: Annotated[
+        Path,
+        typer.Option("--object-mentions", help="Path to object mentions parquet."),
+    ] = DEFAULT_PHASE1_OBJECT_MENTIONS_PATH,
+    object_graph_candidates: Annotated[
+        Path,
+        typer.Option("--object-graph-candidates", help="Path to object graph candidates parquet."),
+    ] = DEFAULT_PHASE1_OBJECT_GRAPH_CANDIDATES_PATH,
+    cited_title_profiles: Annotated[
+        Path,
+        typer.Option("--cited-title-profiles", help="Path to cited-title profiles parquet."),
+    ] = DEFAULT_PHASE1_CITED_TITLE_PROFILES_PATH,
+    jsonl_out: Annotated[
+        Path,
+        typer.Option("--jsonl-out", help="Output Phase-2 structured labels JSONL path."),
+    ] = DEFAULT_PHASE2_STRUCTURED_JSONL_PATH,
+    parquet_out: Annotated[
+        Path,
+        typer.Option("--parquet-out", help="Output Phase-2 structured labels parquet path."),
+    ] = DEFAULT_PHASE2_STRUCTURED_PARQUET_PATH,
+    failed_out: Annotated[
+        Path,
+        typer.Option("--failed-out", help="Output failed Phase-2 rows JSONL path."),
+    ] = DEFAULT_PHASE2_STRUCTURED_FAILED_PATH,
+    report: Annotated[
+        Path,
+        typer.Option("--report", help="Output Phase-2 structured extraction report path."),
+    ] = DEFAULT_PHASE2_STRUCTURED_REPORT,
+    review_sample: Annotated[
+        Path,
+        typer.Option("--review-sample", help="Output reviewer-facing Phase-2 CSV sample."),
+    ] = DEFAULT_PHASE2_REVIEW_SAMPLE_PATH,
+    cache_dir: Annotated[
+        Path,
+        typer.Option("--cache-dir", help="Local cache directory for Phase-2 model results."),
+    ] = DEFAULT_PHASE2_CACHE_DIR,
+    model: Annotated[
+        str | None,
+        typer.Option(
+            "--model",
+            help="OpenAI model name. Defaults to OPENAI_REVIEW_MODEL or project default.",
+        ),
+    ] = None,
+    limit: Annotated[
+        int,
+        typer.Option("--limit", min=1, help="Maximum queue rows to process."),
+    ] = 600,
+    seed: Annotated[
+        int,
+        typer.Option("--seed", help="Deterministic sampling seed if queue sampling is needed."),
+    ] = 42,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Generate prompts without API calls."),
+    ] = False,
+) -> None:
+    """Run Phase-2 LLM structured evidence extraction over a Phase-1 queue."""
+    try:
+        metrics = run_phase2_structured_extraction(
+            queue_path=queue,
+            candidates_path=candidates,
+            features_path=features,
+            contexts_path=contexts,
+            object_mentions_path=object_mentions,
+            object_graph_candidates_path=object_graph_candidates,
+            cited_title_profiles_path=cited_title_profiles,
+            jsonl_out=jsonl_out,
+            parquet_out=parquet_out,
+            failed_out=failed_out,
+            report_path=report,
+            review_sample_out=review_sample,
+            cache_dir=cache_dir,
+            limit=limit,
+            model=model,
+            seed=seed,
+            dry_run=dry_run,
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        error_console.print(f"[red]Failed to run Phase-2 structured extraction:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    mode = "dry-run prompts" if dry_run else "structured labels"
+    completed = metrics["dry_run_prompt_records"] if dry_run else metrics["successful_rows"]
+    console.print(
+        f"Prepared {metrics['total_queue_rows']} Phase-2 queue rows; "
+        f"{completed} {mode}; failed={metrics['failed_rows']}. "
+        f"Wrote {jsonl_out}, {parquet_out}, {failed_out}, {review_sample}, and {report}."
     )
 
 
