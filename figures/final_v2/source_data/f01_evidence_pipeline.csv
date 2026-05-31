@@ -1,0 +1,10 @@
+step_order,step,display_label,count,count_label,retention_from_previous,retention_from_first,note
+1,section_aware_contexts,Section-aware contexts,1990689,1.99M,1.0,1.0,Full deterministic extraction layer.
+2,marker_components,Marker components,3152073,3.15M,1.5834080562056654,1.5834080562056654,Can exceed contexts because grouped citations split.
+3,strong_contexts,Strong resolved contexts,1184634,1.18M,0.3758269557843362,0.5950874295281684,Full deterministic high-confidence context layer.
+4,object_graph_candidates,Object graph candidates,322688,322.7k,0.2723946805511238,0.16209865026631484,Full object candidate layer.
+5,phase2_high_medium_queue,Phase-2 high/medium queue,306231,306.2k,0.9490002727092424,0.15383166330853287,Full high/medium Phase-1 LLM queue.
+6,revalidated_phase2_rows,Revalidated Phase-2 rows,237697,237.7k,0.7762016255702394,0.11940438712425698,Batch rows that parsed or were recovered by local revalidation.
+7,analysis_ready_phase2_labels,Analysis-ready labels,229751,229.8k,0.9665708864647009,0.11541280431046738,Grounded non-abstain Phase-2 semantic labels.
+8,evidence_backed_object_edges,Object-use edges,193287,193.3k,0.841289047708171,0.0970955282316826,Unique context-object-intent edges after top-3 object policy.
+9,remaining_failed_phase2_rows,Remaining failed rows,68534,68.5k,0.28832505248278273,0.0344272761842759,Excluded from final semantic figures.

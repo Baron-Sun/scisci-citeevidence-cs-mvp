@@ -95,6 +95,13 @@ from citeevidence.contexts.resolve import (
 from citeevidence.datasets.multicite import load_multicite
 from citeevidence.datasets.normalize import write_labeled_contexts
 from citeevidence.datasets.scicite import load_scicite
+from citeevidence.final_v2 import (
+    DEFAULT_FINAL_V2_EVIDENCE_CARDS,
+    DEFAULT_FINAL_V2_FIGURES_DIR,
+    DEFAULT_FINAL_V2_REPORT,
+    DEFAULT_FINAL_V2_SOURCE_DATA_DIR,
+    run_final_results_v2_analysis,
+)
 from citeevidence.llm_review import (
     DEFAULT_ANALYSIS_READY_CONTEXTS_PATH as DEFAULT_LLM_REVIEW_CONTEXTS_PATH,
 )
@@ -608,6 +615,79 @@ def analyze_final_results(
         f"strict edges={metrics['evidence_backed_object_edges']}; "
         f"strict nodes={metrics['evidence_backed_object_nodes']}; "
         f"figures={metrics['figure_count']}. Wrote {out_report}."
+    )
+
+
+@analysis_app.command("final-results-v2")
+def analyze_final_results_v2(
+    phase2: Annotated[
+        Path,
+        typer.Option("--phase2", help="Final analysis-ready Phase-2 labels parquet."),
+    ] = DEFAULT_PHASE2_BATCH_ANALYSIS_READY_LABELS_PATH,
+    excluded: Annotated[
+        Path,
+        typer.Option("--excluded", help="Excluded revalidated Phase-2 labels parquet."),
+    ] = DEFAULT_PHASE2_BATCH_EXCLUDED_LABELS_PATH,
+    failed_diagnostics: Annotated[
+        Path,
+        typer.Option("--failed-diagnostics", help="Batch failed diagnostics parquet."),
+    ] = DEFAULT_PHASE2_BATCH_FAILED_DIAGNOSTICS_PATH,
+    object_graph_candidates: Annotated[
+        Path,
+        typer.Option("--object-graph-candidates", help="Object graph candidate parquet."),
+    ] = DEFAULT_FULL_OBJECT_GRAPH_CANDIDATES_PATH,
+    object_mentions: Annotated[
+        Path,
+        typer.Option("--object-mentions", help="Object mentions parquet."),
+    ] = DEFAULT_OBJECT_MENTIONS_PATH,
+    contexts: Annotated[
+        Path,
+        typer.Option("--contexts", help="Analysis-ready strong contexts parquet."),
+    ] = DEFAULT_ANALYSIS_READY_STRONG_CONTEXTS_PATH,
+    phase1: Annotated[
+        Path,
+        typer.Option("--phase1", help="Full Phase-1 candidate parquet."),
+    ] = DEFAULT_PHASE1_CANDIDATES_FULL_PATH,
+    out_report: Annotated[
+        Path,
+        typer.Option("--out-report", help="Output final_v2 markdown report."),
+    ] = DEFAULT_FINAL_V2_REPORT,
+    figures_dir: Annotated[
+        Path,
+        typer.Option("--figures-dir", help="Output directory for final_v2 figures."),
+    ] = DEFAULT_FINAL_V2_FIGURES_DIR,
+    source_data_dir: Annotated[
+        Path,
+        typer.Option("--source-data-dir", help="Output directory for final_v2 source CSVs."),
+    ] = DEFAULT_FINAL_V2_SOURCE_DATA_DIR,
+    out_cards: Annotated[
+        Path,
+        typer.Option("--out-cards", help="Output final_v2 evidence cards CSV."),
+    ] = DEFAULT_FINAL_V2_EVIDENCE_CARDS,
+) -> None:
+    """Generate publication-grade final_v2 figures and report without API calls."""
+    try:
+        metrics = run_final_results_v2_analysis(
+            phase2_path=phase2,
+            excluded_path=excluded,
+            failed_diagnostics_path=failed_diagnostics,
+            object_graph_candidates_path=object_graph_candidates,
+            object_mentions_path=object_mentions,
+            contexts_path=contexts,
+            phase1_path=phase1,
+            out_report_path=out_report,
+            figures_dir=figures_dir,
+            source_data_dir=source_data_dir,
+            out_cards_path=out_cards,
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        error_console.print(f"[red]Failed to generate final_v2 results:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    console.print(
+        f"Final_v2 labels={metrics['analysis_ready_phase2_labels']}; "
+        f"unique object edges={metrics['evidence_backed_object_edges']}; "
+        f"figures={metrics['figure_count']}. Wrote {out_report} and {out_cards}."
     )
 
 

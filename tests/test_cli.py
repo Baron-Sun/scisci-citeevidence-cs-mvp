@@ -17,3 +17,10 @@ def test_final_results_help_smoke() -> None:
 
     assert result.exit_code == 0
     assert "--phase2" in result.stdout
+
+
+def test_final_results_v2_help_smoke() -> None:
+    result = CliRunner().invoke(app, ["analysis", "final-results-v2", "--help"])
+
+    assert result.exit_code == 0
+    assert "--out-cards" in result.stdout

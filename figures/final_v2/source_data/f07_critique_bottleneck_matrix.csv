@@ -1,0 +1,37 @@
+object_type,bottleneck_family,rows,object_type_total,row_share
+model,data/resource requirement,24,677,0.03545051698670606
+model,fail / cannot / unable,282,677,0.41654357459379615
+model,generalization / scalability,1,677,0.0014771048744460858
+model,limitation / drawback,146,677,0.21565731166912852
+model,metric limitation,3,677,0.004431314623338257
+model,other,137,677,0.20236336779911374
+model,poor performance,84,677,0.1240768094534712
+metric,fail / cannot / unable,221,614,0.35993485342019543
+metric,generalization / scalability,1,614,0.0016286644951140066
+metric,limitation / drawback,160,614,0.26058631921824105
+metric,metric limitation,101,614,0.16449511400651465
+metric,other,30,614,0.048859934853420196
+metric,poor performance,101,614,0.16449511400651465
+dataset_or_database,data/resource requirement,16,274,0.058394160583941604
+dataset_or_database,fail / cannot / unable,104,274,0.3795620437956204
+dataset_or_database,generalization / scalability,5,274,0.01824817518248175
+dataset_or_database,limitation / drawback,74,274,0.27007299270072993
+dataset_or_database,metric limitation,9,274,0.032846715328467155
+dataset_or_database,other,47,274,0.17153284671532848
+dataset_or_database,poor performance,19,274,0.06934306569343066
+method,data/resource requirement,2,215,0.009302325581395349
+method,fail / cannot / unable,97,215,0.4511627906976744
+method,limitation / drawback,26,215,0.12093023255813953
+method,metric limitation,3,215,0.013953488372093023
+method,other,59,215,0.2744186046511628
+method,poor performance,28,215,0.13023255813953488
+benchmark_or_protocol,data/resource requirement,2,48,0.041666666666666664
+benchmark_or_protocol,fail / cannot / unable,17,48,0.3541666666666667
+benchmark_or_protocol,limitation / drawback,13,48,0.2708333333333333
+benchmark_or_protocol,other,10,48,0.20833333333333334
+benchmark_or_protocol,poor performance,6,48,0.125
+software_or_tool,data/resource requirement,2,46,0.043478260869565216
+software_or_tool,fail / cannot / unable,16,46,0.34782608695652173
+software_or_tool,limitation / drawback,13,46,0.2826086956521739
+software_or_tool,other,12,46,0.2608695652173913
+software_or_tool,poor performance,3,46,0.06521739130434782
