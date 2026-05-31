@@ -22,6 +22,7 @@ from pydantic import (
 )
 
 from citeevidence.llm_review import DEFAULT_OPENAI_REVIEW_MODEL, resolve_review_model
+from citeevidence.markdown import format_markdown_sections
 from citeevidence.phase1 import (
     DEFAULT_PHASE1_CANDIDATES_FULL_PATH,
     DEFAULT_PHASE1_CITED_TITLE_PROFILES_PATH,
@@ -1252,7 +1253,7 @@ def build_phase2_batch_cost_report(metrics: dict[str, Any]) -> str:
         {"metric": "pilot_average_source", "value": metrics["pilot_average_source"]},
         {"metric": "pricing_source", "value": metrics["pricing_source"]},
     ]
-    return "\n".join(
+    return format_markdown_sections(
         [
             "# Phase-2 Batch Cost Estimate",
             "",
@@ -1317,7 +1318,7 @@ def build_phase2_batch_run_report(
             },
         ]
     )
-    return "\n".join(
+    return format_markdown_sections(
         [
             "# Phase-2 Batch Structured Evidence Extraction Report",
             "",
@@ -1814,69 +1815,52 @@ def build_phase2_batch_analysis_ready_report(
             {"metric": "pseudo_nodes", "value": ";".join(metrics["pseudo_nodes"])},
         ]
     )
-    sections = [
+    return format_markdown_sections(
+        [
         "# Phase-2 Batch Analysis-Ready Label Audit",
-        "",
         "This report defines the final downstream-analysis table for full high+medium "
         "Phase-2 Batch labels. Analysis-ready rows must be non-abstain, "
         "`evidence_supports_label=true`, confidence >= 0.7, non-unclear, and grounded "
         "by an exact evidence substring.",
-        "",
         "## Inputs",
         f"- Revalidated labels: `{labels_path}`",
         f"- Remaining failed rows: `{failed_path}`",
         f"- Failed diagnostics: `{failed_diagnostics_path}`",
         f"- Object graph candidates: `{object_graph_candidates_path}`",
-        "",
         "## Outputs",
         f"- Analysis-ready labels: `{out_labels_path}`",
         f"- Excluded labels: `{out_excluded_path}`",
         f"- Summary CSV: `{out_summary_path}`",
-        "",
         "## Core Metrics",
         _table(core),
-        "",
         "## Evidence Supports Label Before Filtering",
         _table(metrics["evidence_supports_label_before"]),
-        "",
         "## Abstain Before Filtering",
         _table(metrics["abstain_before"]),
-        "",
         "## Confidence Distribution Before Filtering",
         _table(metrics["confidence_distribution_before"]),
-        "",
         "## Confidence Distribution After Filtering",
         _table(metrics["confidence_distribution_after"]),
-        "",
         "## Final Intent Before Filtering",
         _table(metrics["final_intent_before"]),
-        "",
         "## Final Intent After Filtering",
         _table(metrics["final_intent_after"]),
-        "",
         "## Final Object Type Before Filtering",
         _table(metrics["final_object_type_before"]),
-        "",
         "## Final Object Type After Filtering",
         _table(metrics["final_object_type_after"]),
-        "",
         "## Final Relation Subtype Before Filtering",
         _table(metrics["final_relation_subtype_before"]),
-        "",
         "## Final Relation Subtype After Filtering",
         _table(metrics["final_relation_subtype_after"]),
-        "",
         "## Excluded Rows By Reason",
         _table(metrics["excluded_by_reason"]),
-        "",
         "## Remaining Failed Rows By Validator Failure Category",
         _table(metrics["remaining_failed_by_validator"]),
-        "",
         "## Final Recommended Downstream Table",
         f"`{out_labels_path}`",
-        "",
-    ]
-    return "\n".join(sections)
+        ]
+    )
 
 
 def _annotate_phase2_analysis_ready_labels(
@@ -2543,7 +2527,7 @@ def build_phase2_report(
                 "",
             ]
         )
-    return "\n".join(sections)
+    return format_markdown_sections(sections)
 
 
 def build_phase2_revalidation_metrics(
@@ -2671,7 +2655,7 @@ def build_phase2_failed_diagnostics_report(
             },
         ]
     )
-    return "\n".join(
+    return format_markdown_sections(
         [
             "# Phase-2 Failed Validation Diagnostics",
             "",
@@ -2827,7 +2811,7 @@ def build_phase2_revalidated_report(
             "",
         ]
     )
-    return "\n".join(sections)
+    return format_markdown_sections(sections)
 
 
 def _phase2_result_record_from_decision(

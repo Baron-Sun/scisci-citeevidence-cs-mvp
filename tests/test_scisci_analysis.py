@@ -11,6 +11,9 @@ from citeevidence.analysis import (
     build_evidence_backed_object_graph,
     build_evidence_cards,
     build_evidence_funnel,
+    build_final_cited_paper_ranking_reversal,
+    build_final_evidence_cards,
+    build_final_intent_by_section,
     build_object_function_matrix_phase1,
     build_object_function_matrix_phase2,
     build_object_graph_report,
@@ -18,6 +21,7 @@ from citeevidence.analysis import (
     build_phase1_phase2_calibration,
     build_scisci_full_report,
     build_section_function_rates,
+    run_final_results_analysis,
     write_scisci_full_figures,
 )
 
@@ -436,3 +440,108 @@ def test_object_graph_report_generation_works() -> None:
 
     assert "Evidence-Backed Object-Use Mini Graph Report" in report
     assert "strict_object_edges" in report
+
+
+def test_final_section_heatmap_rows_sum_to_one() -> None:
+    section_heatmap = build_final_intent_by_section(_phase2())
+
+    sums = section_heatmap.groupby("normalized_section")["row_normalized_rate"].sum()
+
+    assert all(abs(value - 1.0) < 1e-9 for value in sums)
+
+
+def test_final_ranking_reversal_uses_evidence_rank() -> None:
+    contexts = pd.DataFrame(
+        [
+            {"context_id": "a1", "resolved_cited_acl_id": "A", "resolved_cited_title": "A"},
+            {"context_id": "a2", "resolved_cited_acl_id": "A", "resolved_cited_title": "A"},
+            {"context_id": "a3", "resolved_cited_acl_id": "A", "resolved_cited_title": "A"},
+            {"context_id": "b1", "resolved_cited_acl_id": "B", "resolved_cited_title": "B"},
+            {"context_id": "b2", "resolved_cited_acl_id": "B", "resolved_cited_title": "B"},
+        ]
+    )
+    phase2 = pd.DataFrame(
+        [
+            {
+                "context_id": "a1",
+                "resolved_cited_acl_id": "A",
+                "resolved_cited_title": "A",
+                "final_intent": "background",
+            },
+            {
+                "context_id": "b1",
+                "resolved_cited_acl_id": "B",
+                "resolved_cited_title": "B",
+                "final_intent": "uses",
+            },
+            {
+                "context_id": "b2",
+                "resolved_cited_acl_id": "B",
+                "resolved_cited_title": "B",
+                "final_intent": "compares_against",
+            },
+        ]
+    )
+
+    reversal = build_final_cited_paper_ranking_reversal(contexts, phase2)
+    paper_b = reversal.loc[reversal["resolved_cited_acl_id"].eq("B")].iloc[0]
+
+    assert paper_b["total_strong_contexts"] == 2
+    assert paper_b["evidence_use_count"] == 2
+    assert paper_b["rank_by_evidence_use_count"] < paper_b["rank_by_total_contexts"]
+
+
+def test_final_evidence_cards_keep_grounded_spans() -> None:
+    _, edges = build_evidence_backed_object_graph(_phase2(), _object_graph())
+    ranking_reversal = build_final_cited_paper_ranking_reversal(_contexts(), _phase2())
+    cards = build_final_evidence_cards(edges, ranking_reversal)
+
+    assert not cards.empty
+    for _, card in cards.iterrows():
+        assert card["evidence_span"] in card["citation_sentence"]
+
+
+def test_final_results_report_figures_and_source_data_are_written(tmp_path: Path) -> None:
+    phase2_path = tmp_path / "phase2.parquet"
+    excluded_path = tmp_path / "excluded.parquet"
+    failed_path = tmp_path / "failed.parquet"
+    object_graph_path = tmp_path / "object_graph.parquet"
+    object_mentions_path = tmp_path / "object_mentions.parquet"
+    contexts_path = tmp_path / "contexts.parquet"
+    phase1_path = tmp_path / "phase1.parquet"
+
+    _phase2().to_parquet(phase2_path)
+    _phase2().iloc[0:0].to_parquet(excluded_path)
+    pd.DataFrame([{"context_id": "failed", "revalidated": False}]).to_parquet(failed_path)
+    _object_graph().to_parquet(object_graph_path)
+    _object_mentions().to_parquet(object_mentions_path)
+    _contexts().to_parquet(contexts_path)
+    _phase1().to_parquet(phase1_path)
+
+    metrics = run_final_results_analysis(
+        phase2_path=phase2_path,
+        excluded_path=excluded_path,
+        failed_diagnostics_path=failed_path,
+        object_graph_candidates_path=object_graph_path,
+        object_mentions_path=object_mentions_path,
+        contexts_path=contexts_path,
+        phase1_path=phase1_path,
+        out_report_path=tmp_path / "final_report.md",
+        out_summary_path=tmp_path / "final_summary.csv",
+        out_object_matrix_path=tmp_path / "final_object_matrix.csv",
+        out_infrastructure_scores_path=tmp_path / "final_infrastructure.csv",
+        out_ranking_reversal_path=tmp_path / "final_ranking_reversal.csv",
+        out_critique_map_path=tmp_path / "final_critique_map.csv",
+        out_evidence_cards_path=tmp_path / "final_evidence_cards.csv",
+        figures_dir=tmp_path / "figures",
+        source_data_dir=tmp_path / "source",
+    )
+
+    report = (tmp_path / "final_report.md").read_text(encoding="utf-8")
+
+    assert metrics["figure_count"] == 8
+    assert "\n\n## Evidence Funnel\n\n" in report
+    assert (tmp_path / "source" / "final_01_evidence_funnel.csv").exists()
+    assert (tmp_path / "source" / "final_08_benchmark_metric_network.csv").exists()
+    assert (tmp_path / "figures" / "final_01_evidence_funnel.png").exists()
+    assert (tmp_path / "final_evidence_cards.csv").exists()

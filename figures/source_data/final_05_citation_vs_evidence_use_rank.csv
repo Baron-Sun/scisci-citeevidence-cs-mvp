@@ -1,0 +1,201 @@
+resolved_cited_acl_id,resolved_cited_title,total_strong_contexts,applies,background,compares_against,critiques,extends,uses,unclear,evidence_use_count,background_share,use_share,rank_by_total_contexts,rank_by_evidence_use_count,rank_difference
+S19-2200,{C}olumbia{NLP} at {S}em{E}val-2019 Task 8: The Answer is Language Model Fine-tuning,1,0,0,0,0,1,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W06-3810,Graph-based Generalized Latent Semantic Analysis for Document Representation,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+I13-1005,Precise Information Retrieval Exploiting Predicate-Argument Structures,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2020.coling-main.337,Unleashing the Power of Neural Discourse Parsers - A Context and Structure Aware Approach Using Large Scale Pretraining,1,0,0,0,0,1,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+I11-1110,Using Text Reviews for Product Entity Completion,1,0,0,0,1,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2020.ngt-1.27,Improving Document-Level Neural Machine Translation with Domain Adaptation,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W08-2005,Graph-Based Clustering for Semantic Classification of Onomatopoetic Words,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+P17-3006,Are You Asking the Right Questions? Teaching Machines to Ask Clarification Questions,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W19-1901,Effective Feature Representation for Clinical Text Concept Extraction,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+I08-1020,Experiments on Semantic-based Clustering for Cross-document Coreference,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+P18-4004,{H}arri{GT}: A Tool for Linking News to Science,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W08-0324,Statistical Transfer Systems for {F}rench-{E}nglish and {G}erman-{E}nglish Machine Translation,1,0,0,0,0,1,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+I05-3028,{C}hinese Word Segmentation with Multiple Postprocessors in {HIT}-{IRL}ab,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+I05-2046,Using Maximum Entropy to Extract Biomedical Named Entities without Dictionaries,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2020.lrec-1.825,Abstractive Text Summarization based on Language Model Conditioning and Locality Modeling,1,0,0,0,1,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+P19-1217,Inferential Machine Comprehension: Answering Questions by Recursively Deducing the Evidence Chain from Text,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W19-3212,Transfer Learning for Health-related {T}witter Data,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+P19-1321,Word and Document Embedding with v{MF}-Mixture Priors on Context Word Vectors,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2020.lrec-1.754,"{E}mpiri{ST} Corpus 2.0: Adding Manual Normalization, Lemmatization and Semantic Tagging to a {G}erman Web and {CMC} Corpus",1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+H93-1012,Overview of {TREC}-1,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+P19-1553,Better Exploiting Latent Variables in Text Modeling,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2006.eamt-1.18,Leveraging Recurrent Phrase Structure in Large-scale Ontology Translation,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W07-1529,Shared Corpora Working Group Report,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2020.coling-main.493,Fact-level Extractive Summarization with Hierarchical Graph Mask on {BERT},1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2020.lrec-1.717,From Spatial Relations to Spatial Configurations,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W19-3656,Cross-Sentence Transformations in Text Simplification,1,0,0,0,1,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W19-3711,{TLR} at {BSNLP}2019: A Multilingual Named Entity Recognition System,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W19-3904,Multi-Element Long Distance Dependencies: Using {SP}k Languages to Explore the Characteristics of Long-Distance Dependencies,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W19-4005,{CCG}web: a New Annotation Tool and a First Quadrilingual {CCG} Treebank,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2020.coling-main.54,Named Entity Recognition for {C}hinese biomedical patents,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2020.coling-main.547,{``}What is on your mind?{''} Automated Scoring of Mindreading in Childhood and Early Adolescence,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+P16-3006,Significance of an Accurate Sandhi-Splitter in Shallow Parsing of {D}ravidian Languages,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W18-6516,{S}patial{VOC}2{K}: A Multilingual Dataset of Images with Annotations and Features for Spatial Relations between Objects,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2020.nlptea-1.5,Combining {R}es{N}et and Transformer for {C}hinese Grammatical Error Diagnosis,1,0,0,0,0,1,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2020.clssts-1.6,A Comparison of Unsupervised Methods for Ad hoc Cross-Lingual Document Retrieval,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+P11-3010,{P}sycho{S}enti{W}ord{N}et,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2009.mtsummit-papers.2,Phrase Translation Model Enhanced with Association based Features,1,1,0,0,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W18-1707,"Fusing Document, Collection and Label Graph-based Representations with Word Embeddings for Text Classification",1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W18-1806,Context Models for {OOV} Word Translation in Low-Resource Languages,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+K16-1027,Substring-based unsupervised transliteration with phonetic and contextual knowledge,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2021.sigmorphon-1.15,Linguistic Knowledge in Multilingual Grapheme-to-Phoneme Conversion,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2020.ccl-1.90,A Mixed Learning Objective for Neural Machine Translation,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W18-2502,Stop Word Lists in Free Open-source Software Packages,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2021.vardial-1.15,N-gram and Neural Models for Uralic Language Identification: {NRC} at {V}ar{D}ial 2021,1,0,0,0,0,1,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+P13-2065,Stem Translation with Affix-Based Rule Selection for Agglutinative Languages,1,0,0,0,1,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W18-3011,A Hybrid Learning Scheme for {C}hinese Word Embedding,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W18-3013,Evaluating Word Embeddings in Multi-label Classification Using Fine-Grained Name Typing,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2021.wanlp-1.14,Adult Content Detection on {A}rabic {T}witter: Analysis and Experiments,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2021.wassa-1.30,Team Phoenix at {WASSA} 2021: Emotion Analysis on News Stories with Pre-Trained Language Models,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+P15-4025,{N}iu{P}arser: A {C}hinese Syntactic and Semantic Parsing Toolkit,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2008.tc-1.9,Developing a 12-week e-Learning Course on Software Localisation at Imperial College {L}ondon: Design and Insights from Student Feedback,1,0,0,0,1,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2020.semeval-1.109,{SSN}{\_}{NLP} at {S}em{E}val-2020 Task 7: Detecting Funniness Level Using Traditional Learning with Sentence Embeddings,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W18-4306,Crowdsourcing {S}tory{L}ines: Harnessing the Crowd for Causal Relation Annotation,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2021.wmt-1.46,"The {U}niversity of {M}aryland, College Park Submission to Large-Scale Multilingual Shared Task at {WMT} 2021",1,0,0,0,0,1,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2021.wmt-1.50,Back-translation for Large-Scale Multilingual Machine Translation,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2020.coling-main.112,Lexical Relation Mining in Neural Word Embeddings,1,0,0,0,1,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2022.acl-long.105,Unified Speech-Text Pre-training for Speech Translation and Recognition,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+P14-2132,Observational Initialization of Type-Supervised Taggers,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2020.repl4nlp-1.19,On Dimensional Linguistic Properties of the Word Embedding Space,1,0,0,0,1,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2007.tmi-papers.16,Demonstration of the {S}panish to {E}nglish {METIS}-{II} {MT} system,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W18-6128,Step or Not: Discriminator for The Real Instructions in User-generated Recipes,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2020.nuse-1.8,Automatic extraction of personal events from dialogue,1,0,0,0,1,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2020.nuse-1.14,On-The-Fly Information Retrieval Augmentation for Language Models,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W19-4324,Assessing Incrementality in Sequence-to-Sequence Models,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2020.lrec-1.566,Fine-grained Named Entity Annotations for {G}erman Biographic Interviews,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2020.findings-emnlp.346,Incremental Text-to-Speech Synthesis with Prefix-to-Prefix Framework,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2005.mtsummit-ebmt.8,Assembling a Parallel Corpus from {RSS} News Feeds,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+R09-1072,A Unified Method for Extracting Simple and Multiword Verbs with Valence Information and Application for {H}ungarian,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+R09-2002,{M}ink: An Incremental Data-Driven Dependency Parser with Integrated Conversion to Semantics,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+D19-1135,Towards Better Modeling Hierarchical Structure for Self-Attention with Ordered Neurons,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+R11-1023,Noun Compound and Named Entity Recognition and their Usability in Keyphrase Extraction,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+R11-1024,A Named Entity Recognition Method using Rules Acquired from Unlabeled Data,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2002.tc-1.1,The Full Text Multilingual Corpus: Breaking the Translation Memory Bottleneck,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+D18-1472,Is it Time to Swish? Comparing Deep Learning Activation Functions Across {NLP} tasks,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2020.emnlp-main.200,{HENIN}: Learning Heterogeneous Neural Interaction Networks for Explainable Cyberbullying Detection on Social Media,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W04-0848,{LCC}{'}s {WSD} systems for Senseval-3,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2002.amta-papers.3,Adaptive bilingual sentence alignment,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+D16-1154,Long-Short Range Context Neural Networks for Language Modeling,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W97-0509,Application of {NLP} technologyto production of closed-caption {TV}. programs in {J}apanese for the hearing impaired,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2020.emnlp-main.247,Scene Restoring for Narrative Machine Reading Comprehension,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+D15-1223,Krimping texts for better summarization,1,1,0,0,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2020.emnlp-main.254,{P}areto Probing: {T}rading Off Accuracy for Complexity,1,0,0,0,1,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W97-1514,An Object-Oriented Linguistic Engineering Environment using {LFG} (Lexical Functionnal Grammar) and {CG} (Conceptual Graphs),1,0,0,0,1,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W03-2409,Limits to annotation precision,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+R19-1147,{ETNLP}: A Visual-Aided Systematic Approach to Select Pre-Trained Embeddings for a Downstream Task,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W03-2114,Managing Dialogue Interaction: A Multi-Layered Approach,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2020.findings-emnlp.56,{N}eu{R}educe: Reducing Mixed {B}oolean-Arithmetic Expressions by Recurrent Neural Network,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+D09-1113,Empirical Exploitation of Click Data for Task Specific Ranking,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+C10-2066,Automatic Allocation of Training Data for Rapid Prototyping of Speech Understanding based on Multiple Model Combination,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+S07-1106,{U}of{L}: Word Sense Disambiguation Using Lexical Cohesion,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+C98-1112,Generation that Exploits Corpus-Based Statistical Knowledge,1,0,0,0,1,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+S10-1084,{RALI}: Automatic Weighting of Text Window Distances,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2020.findings-emnlp.410,Why and when should you pool? Analyzing Pooling in Recurrent Architectures,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+S10-1087,{IIITH}: Domain Specific Word Sense Disambiguation,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+C96-2134,Document Classification Using Domain Specific Kanji Characters Extracted by X2 Method,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W03-0417,Training a Naive {B}ayes Classifier via the {EM} Algorithm with a Class Distribution Constraint,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+D19-1229,Modeling Color Terminology Across Thousands of Languages,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+D19-1411,Learning Only from Relevant Keywords and Unlabeled Documents,1,0,0,0,1,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+R09-1031,Fast Boosting-based Part-of-Speech Tagging and Text Chunking with Efficient Rule Representation for Sequential Labeling,1,1,0,0,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2005.eamt-1.10,Using template-grammars for shake {\&} bake paraphrasing,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W19-5015,A Comparison of Word-based and Context-based Representations for Classification Problems in Health Informatics,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2020.lrec-1.509,A Dataset for Multi-lingual Epidemiological Event Extraction,1,0,0,0,0,1,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+P86-1014,"Copying in Natural Languages, Context-Freeness, and Queue Grammars",1,0,0,0,1,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2020.lrec-1.465,{P}ara{P}at: The Multi-Million Sentences Parallel Corpus of Patents Abstracts,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2020.lrec-1.460,{M}u{ST}-Cinema: a Speech-to-Subtitles corpus,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2020.lrec-1.445,Content-Equivalent Translated Parallel News Corpus and Extension of Domain Adaptation for {NMT},1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+P88-1026,Lexicon and grammar in probabilistic tagging of written {E}nglish.,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+E89-1011,The Organization of the {R}osetta Grammars,1,0,0,0,1,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W06-1903,Cross-Cutting Aspects of Cross-Language Question Answering Systems,1,0,0,0,1,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2005.iwslt-1.27,Example-based Machine Translation Pursuing Fully Structural {NLP},1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+P91-1020,A System for Translating Locative Prepositions From {E}nglish Into {F}rench,1,0,0,0,1,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W06-1524,Reconsidering Raising and Experiencers in {E}nglish,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+E17-2103,Unsupervised Training for Large Vocabulary Translation Using Sparse Lexicon and Word Classes,1,0,0,0,1,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2020.lrec-1.336,{TR}op{B}ank: {T}urkish {P}rop{B}ank V2.0,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+D19-1611,Polly Want a Cracker: Analyzing Performance of Parroting on Paraphrase Generation Datasets,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W06-1106,Sentence Comparison Using Robust {M}inimal {R}ecursion {S}emantics and an Ontology,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+E14-2002,"Multilingual, Efficient and Easy {NLP} Processing with {IXA} Pipeline",1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+P97-1046,A Comparison of Head Transducers and Transfer for a Limited Domain Translation Application,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W06-0139,Description of the {NCU} {C}hinese Word Segmentation and Named Entity Recognition System for {SIGHAN} Bakeoff 2006,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W19-6736,Raising the {TM} Threshold in Neural {MT} Post-Editing: a Case Study on{T}wo Datasets,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2020.emnlp-demos.22,{L}ib{KGE} - A knowledge graph embedding library for reproducible research,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W05-1528,k-{NN} for Local Probability Estimation in Generative Parsing Models,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+C04-1183,Combining clues for lexical level aligning using the Null hypothesis approach,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2003.mtsummit-semit.6,Inductive coding of the {A}rabic lexicon,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2020.lrec-1.105,A Corpus Linguistic Perspective on Contemporary {G}erman Pop Lyrics with the Multi-Layer Annotated {``}Songkorpus{''},1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+Q16-1024,Sparse Non-negative Matrix Language Modeling,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+R09-1018,{E}dlin: an Easy to Read Linear Learning Framework,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W04-2802,Towards Measuring Scalability in Natural Language Understanding Tasks,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2021.semeval-1.46,"{KGP} at {S}em{E}val-2021 Task 8: Leveraging Multi-Staged Language Models for Extracting Measurements, their Attributes and Relations",1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W10-1009,Leveraging Hidden Dialogue State to Select Tutorial Moves,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+P11-2042,Data-oriented Monologue-to-Dialogue Generation,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2020.semeval-1.57,Yseop at {S}em{E}val-2020 Task 5: Cascaded {BERT} Language Model for Counterfactual Statement Analysis,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W15-4632,Multilingual Summarization with Polytope Model,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+L12-1540,{U}ni{D}ic for Early Middle {J}apanese: a Dictionary for Morphological Analysis of Classical {J}apanese,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2021.acl-long.93,Uncovering Constraint-Based Behavior in Neural Models via Targeted Fine-Tuning,1,0,0,0,0,1,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+N03-1025,Language and Task Independent Text Categorization with Simple Language Models,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W13-2251,Ranking Translations using Error Analysis and Quality Estimation,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W13-2228,{QCRI}-{MES} Submission at {WMT}13: Using Transliteration Mining to Improve Statistical Machine Translation,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W15-4917,Stripping Adjectives: Integration Techniques for Selective Stemming in {SMT} Systems,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W13-2209,Yandex School of Data Analysis Machine Translation Systems for {WMT}13,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+L12-1413,Strategies to Improve a Speaker Diarisation Tool,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+L12-1381,The {P}olish Sejm Corpus,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+N03-4004,{TAP}-{XL}: An Automated Analyst{'}s Assistant,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+L12-1345,Annotation of response tokens and their triggering expressions in {J}apanese multi-party conversations,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2021.emnlp-main.740,{BART}hez: a Skilled Pretrained {F}rench Sequence-to-Sequence Model,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W15-5938,Sentence Boundary Detection for Social Media Text,1,0,0,0,1,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W15-5946,Triangulation of Reordering Tables: An Advancement Over Phrase Table Triangulation in Pivot-Based {SMT},1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+L12-1291,Federated Search: Towards a Common Search Infrastructure,1,0,0,0,1,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W13-1809,Finite State Morphology Tool for {L}atvian,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W13-1733,{LIMSI}{'}s participation to the 2013 shared task on Native Language Identification,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2016.gwc-1.38,A Two-Phase Approach for Building {V}ietnamese {W}ord{N}et,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+N07-2043,A High Accuracy Method for Semi-Supervised Information Extraction,1,1,0,0,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W16-0708,Antecedent Prediction Without a Pipeline,1,0,0,0,1,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2021.emnlp-tutorials.4,Multi-Domain Multilingual Question Answering,1,0,0,0,1,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2021.findings-acl.117,{MRN}: A Locally and Globally Mention-Based Reasoning Network for Document-Level Relation Extraction,1,0,0,0,1,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2021.acl-long.449,Adapting Unsupervised Syntactic Parsing Methodology for Discourse Dependency Parsing,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2021.findings-acl.135,Pushing Paraphrase Away from Original Sentence: A Multi-Round Paraphrase Generation Approach,1,0,0,0,0,1,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2015.mtsummit-papers.12,A distributed inflection model for translating into morphologically rich languages,1,0,0,0,0,1,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2020.acl-main.45,Dice Loss for Data-imbalanced {NLP} Tasks,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2015.jeptalnrecital-court.30,Vers une typologie de liens entre contenus journalistiques,1,0,0,0,0,1,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W12-5619,Ensembling Various Dependency Parsers: Adopting Turbo Parser for {I}ndian Languages,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W15-3913,{NCU} {IISR} {E}nglish-{K}orean and {E}nglish-{C}hinese Named Entity Transliteration Using Different Grapheme Segmentation Approaches,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W13-3817,Abduction for Discourse Interpretation: A Probabilistic Framework,1,0,0,0,1,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2021.adaptnlp-1.17,An Empirical Study of Compound {PCFG}s,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2021.eacl-main.6,Keep Learning: Self-supervised Meta-learning for Learning from Inference,1,0,0,0,0,1,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2021.eacl-main.101,Automatic Data Acquisition for Event Coreference Resolution,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W14-4903,{POS} error detection in automatically annotated corpora,1,0,0,0,0,1,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W14-4913,Annotating a Large Representative Corpus of Clinical Notes for Parts of Speech,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+L18-1037,A Recorded Debating Dataset,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W14-3355,"{RED}, The {DCU}-{CASICT} Submission of Metrics Tasks",1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W14-3349,Application of Prize based on Sentence Length in Chunk-based Automatic Evaluation of Machine Translation,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W14-3331,Combining Domain Adaptation Approaches for Medical Text Translation,1,0,0,0,0,1,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W14-5804,Terminology and Knowledge Representation. {I}talian Linguistic Resources for the Archaeological Domain,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2021.eacl-main.194,Subword Pooling Makes a Difference,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W14-6305,Fine-grained semantic categorization of opinion expressions for consensus detection (Cat{\'e}gorisation s{\'e}mantique fine des expressions d{'}opinion pour la d{\'e}tection de consensus) [in {F}rench],1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W15-0208,A Flexible Tool for Manual Word Sense Annotation,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2020.aacl-srw.13,Making a Point: Pointer-Generator Transformers for Disjoint Vocabularies,1,0,0,0,1,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W14-1501,Post-hoc Manipulations of Vector Space Models with Application to Semantic Role Labeling,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W15-1517,Word Embeddings vs Word Types for Sequence Labeling: the Curious Case of {CV} Parsing,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W15-3210,Annotating Targets of Opinions in {A}rabic using Crowdsourcing,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2021.eacl-srw.21,{TMR}: Evaluating {NER} Recall on Tough Mentions,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2021.emnlp-demo.31,Project {D}ebater {API}s: {D}ecomposing the {AI} Grand Challenge,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W15-2305,Lexical Semantics and Model Theory: Together at Last?,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W13-5626,Building a Large Automatically Parsed Corpus of {F}innish,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2021.bsnlp-1.12,Using a Frustratingly Easy Domain and Tagset Adaptation for Creating {S}lavic Named Entity Recognition Systems,1,0,0,0,0,1,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+L14-1595,{F}reepal: A Large Collection of Deep Lexico-Syntactic Patterns for Relation Extraction,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W15-2922,Synthetic Text Generation for Sentiment Analysis,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+L18-1488,Rollenwechsel-{E}nglish: a large-scale semantic role corpus,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2019.gwc-1.16,Merging {D}an{N}et with {P}rinceton {W}ordnet,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W15-3039,Data enhancement and selection strategies for the word-level Quality Estimation,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2021.emnlp-main.353,Contextualize Knowledge Bases with Transformer for End-to-end Task-Oriented Dialogue Systems,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W15-3119,{C}hinese Semantic Role Labeling using High-quality Syntactic Knowledge,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W15-3121,{NTOU} {C}hinese Spelling Check System in Sighan-8 Bake-off,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2021.findings-acl.278,Enhancing Zero-shot and Few-shot Stance Detection with Commonsense Knowledge Graph,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+2021.findings-acl.28,Spatial Dependency Parsing for Semi-Structured Document Information Extraction,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+N13-1098,Differences in User Responses to a {W}izard-of-{O}z versus Automated System,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+P05-3002,Accessing {G}erma{N}et Data and Computing Semantic Relatedness,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W11-2847,The {B}remen System for the {GIVE}-2.5 Challenge,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W11-2846,Direction giving: an attempt to increase user engagement,1,0,0,1,0,0,0,0,1,0.0,1.0,33593.0,9125.0,24468.0
+W11-2204,Reducing the Size of the Representation for the u{DOP}-Estimate,1,0,0,0,0,0,1,0,1,0.0,1.0,33593.0,9125.0,24468.0

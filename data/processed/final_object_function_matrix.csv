@@ -1,0 +1,121 @@
+canonical_name,object_type,final_intent,rows,object_total,row_normalized_rate
+BERT,model,background,23459,32115,0.7304686283668068
+BERT,model,uses,4324,32115,0.13464113342674763
+BERT,model,compares_against,3303,32115,0.10284913591779542
+BERT,model,extends,667,32115,0.020769111007317452
+BERT,model,critiques,269,32115,0.00837614821734392
+BERT,model,applies,93,32115,0.0028958430639887903
+LSTM,model,background,17512,22623,0.7740794766388189
+LSTM,model,compares_against,2199,22623,0.09720196260442912
+LSTM,model,uses,2197,22623,0.09711355699951377
+LSTM,model,extends,496,22623,0.021924590019007206
+LSTM,model,critiques,163,22623,0.007205056800601158
+LSTM,model,applies,56,22623,0.002475356937629846
+BLEU,metric,background,11802,18334,0.6437220464710374
+BLEU,metric,uses,3821,18334,0.2084106032507909
+BLEU,metric,compares_against,2007,18334,0.10946874659103305
+BLEU,metric,critiques,460,18334,0.02508999672739173
+BLEU,metric,extends,198,18334,0.010799607287007745
+BLEU,metric,applies,46,18334,0.002508999672739173
+CRF,method,background,14454,17333,0.8339006519356141
+CRF,method,uses,1258,17333,0.07257831881382334
+CRF,method,compares_against,1173,17333,0.06767437835342988
+CRF,method,extends,324,17333,0.018692667166676284
+CRF,method,critiques,95,17333,0.005480874632204465
+CRF,method,applies,29,17333,0.0016731090982518894
+Transformer,model,background,12648,15918,0.7945721824349793
+Transformer,model,uses,1803,15918,0.1132679984922729
+Transformer,model,compares_against,1021,15918,0.06414122377183064
+Transformer,model,extends,269,15918,0.016899107928131676
+Transformer,model,critiques,145,15918,0.009109184570925995
+Transformer,model,applies,32,15918,0.00201030280185953
+WordNet,dataset_or_database,background,11521,13324,0.8646802761933353
+WordNet,dataset_or_database,uses,910,13324,0.06829780846592615
+WordNet,dataset_or_database,compares_against,513,13324,0.03850195136595617
+WordNet,dataset_or_database,extends,219,13324,0.01643650555388772
+WordNet,dataset_or_database,critiques,141,13324,0.010582407685379765
+WordNet,dataset_or_database,applies,20,13324,0.0015010507355148605
+seq2seq,model,background,8458,9785,0.8643842616249361
+seq2seq,model,uses,532,9785,0.05436893203883495
+seq2seq,model,compares_against,524,9785,0.053551354113438934
+seq2seq,model,extends,162,9785,0.01655595298926929
+seq2seq,model,critiques,90,9785,0.009197751660705161
+seq2seq,model,applies,19,9785,0.001941747572815534
+SemEval,benchmark_or_protocol,background,8098,9465,0.8555731642894876
+SemEval,benchmark_or_protocol,uses,729,9465,0.07702060221870048
+SemEval,benchmark_or_protocol,compares_against,519,9465,0.05483359746434231
+SemEval,benchmark_or_protocol,extends,74,9465,0.007818277865821448
+SemEval,benchmark_or_protocol,critiques,30,9465,0.003169572107765452
+SemEval,benchmark_or_protocol,applies,15,9465,0.001584786053882726
+attention mechanism,method,background,7909,8974,0.8813238243815467
+attention mechanism,method,uses,416,8974,0.04635613995988411
+attention mechanism,method,compares_against,349,8974,0.03889012703365277
+attention mechanism,method,extends,202,8974,0.022509471807443726
+attention mechanism,method,critiques,87,8974,0.009694673501225763
+attention mechanism,method,applies,11,8974,0.0012257633162469357
+HMM,method,background,6077,7267,0.8362460437594605
+HMM,method,uses,490,7267,0.06742809962845742
+HMM,method,compares_against,426,7267,0.05862116416678134
+HMM,method,extends,158,7267,0.021742121921012797
+HMM,method,critiques,109,7267,0.014999311958167057
+HMM,method,applies,7,7267,0.0009632585661208202
+ROUGE,metric,background,4697,6919,0.6788553259141494
+ROUGE,metric,uses,1429,6919,0.20653273594450064
+ROUGE,metric,compares_against,575,6919,0.08310449486920075
+ROUGE,metric,critiques,170,6919,0.02457002457002457
+ROUGE,metric,extends,38,6919,0.005492123139181963
+ROUGE,metric,applies,10,6919,0.0014452955629426219
+Penn Treebank,dataset_or_database,background,5313,6915,0.7683297180043384
+Penn Treebank,dataset_or_database,uses,1138,6915,0.1645697758496023
+Penn Treebank,dataset_or_database,compares_against,296,6915,0.042805495300072306
+Penn Treebank,dataset_or_database,extends,72,6915,0.010412147505422993
+Penn Treebank,dataset_or_database,critiques,63,6915,0.00911062906724512
+Penn Treebank,dataset_or_database,applies,33,6915,0.004772234273318872
+GloVe,model,background,3463,6235,0.5554129911788291
+GloVe,model,uses,2092,6235,0.3355252606255012
+GloVe,model,compares_against,544,6235,0.08724939855653568
+GloVe,model,extends,90,6235,0.014434643143544507
+GloVe,model,critiques,39,6235,0.006255012028869286
+GloVe,model,applies,7,6235,0.0011226944667201283
+word2vec,model,background,3671,4870,0.7537987679671458
+word2vec,model,uses,738,4870,0.1515400410677618
+word2vec,model,compares_against,354,4870,0.07268993839835729
+word2vec,model,extends,77,4870,0.015811088295687885
+word2vec,model,critiques,27,4870,0.005544147843942505
+word2vec,model,applies,3,4870,0.0006160164271047228
+ELMo,model,background,3427,4471,0.7664951912323865
+ELMo,model,uses,529,4471,0.1183180496533214
+ELMo,model,compares_against,369,4471,0.08253187206441512
+ELMo,model,extends,93,4471,0.02080071572355178
+ELMo,model,critiques,36,4471,0.008051889957503914
+ELMo,model,applies,17,4471,0.0038022813688212928
+FrameNet,dataset_or_database,background,3732,4073,0.9162779278173336
+FrameNet,dataset_or_database,uses,173,4073,0.042474834274490544
+FrameNet,dataset_or_database,compares_against,76,4073,0.018659464767984288
+FrameNet,dataset_or_database,extends,57,4073,0.013994598575988216
+FrameNet,dataset_or_database,critiques,22,4073,0.005401424011784925
+FrameNet,dataset_or_database,applies,13,4073,0.0031917505524183647
+Moses,software_or_tool,uses,2021,3998,0.5055027513756879
+Moses,software_or_tool,background,1483,3998,0.37093546773386693
+Moses,software_or_tool,compares_against,424,3998,0.10605302651325663
+Moses,software_or_tool,extends,36,3998,0.009004502251125562
+Moses,software_or_tool,applies,17,3998,0.004252126063031516
+Moses,software_or_tool,critiques,17,3998,0.004252126063031516
+SQuAD,dataset_or_database,background,3020,3926,0.7692307692307693
+SQuAD,dataset_or_database,uses,541,3926,0.13779928680590933
+SQuAD,dataset_or_database,compares_against,276,3926,0.07030056036678553
+SQuAD,dataset_or_database,extends,42,3926,0.010697911360163017
+SQuAD,dataset_or_database,critiques,33,3926,0.008405501782985226
+SQuAD,dataset_or_database,applies,14,3926,0.003565970453387672
+METEOR,metric,background,2582,3796,0.6801896733403583
+METEOR,metric,uses,791,3796,0.20837723919915702
+METEOR,metric,compares_against,312,3796,0.0821917808219178
+METEOR,metric,critiques,73,3796,0.019230769230769232
+METEOR,metric,extends,33,3796,0.00869336143308746
+METEOR,metric,applies,5,3796,0.0013171759747102212
+WMT,benchmark_or_protocol,background,2600,3710,0.7008086253369272
+WMT,benchmark_or_protocol,uses,708,3710,0.1908355795148248
+WMT,benchmark_or_protocol,compares_against,317,3710,0.08544474393530997
+WMT,benchmark_or_protocol,extends,62,3710,0.016711590296495958
+WMT,benchmark_or_protocol,critiques,16,3710,0.00431266846361186
+WMT,benchmark_or_protocol,applies,7,3710,0.0018867924528301887

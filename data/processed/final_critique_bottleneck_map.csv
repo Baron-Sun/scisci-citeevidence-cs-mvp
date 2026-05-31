@@ -1,0 +1,37 @@
+cue_family,object_type,rows
+fail/cannot/unable,model,282
+fail/cannot/unable,metric,221
+limitation/drawback,metric,160
+limitation/drawback,model,146
+other,model,137
+fail/cannot/unable,dataset_or_database,104
+poor performance,metric,101
+metric limitation,metric,101
+fail/cannot/unable,method,97
+poor performance,model,84
+limitation/drawback,dataset_or_database,74
+other,method,59
+other,dataset_or_database,47
+other,metric,30
+poor performance,method,28
+limitation/drawback,method,26
+data/resource requirement,model,24
+poor performance,dataset_or_database,19
+fail/cannot/unable,benchmark_or_protocol,17
+data/resource requirement,dataset_or_database,16
+fail/cannot/unable,software_or_tool,16
+limitation/drawback,software_or_tool,13
+limitation/drawback,benchmark_or_protocol,13
+other,software_or_tool,12
+other,benchmark_or_protocol,10
+metric limitation,dataset_or_database,9
+poor performance,benchmark_or_protocol,6
+generalization/scalability,dataset_or_database,5
+poor performance,software_or_tool,3
+metric limitation,model,3
+metric limitation,method,3
+data/resource requirement,software_or_tool,2
+data/resource requirement,method,2
+data/resource requirement,benchmark_or_protocol,2
+generalization/scalability,model,1
+generalization/scalability,metric,1

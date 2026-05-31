@@ -47,6 +47,13 @@ from citeevidence.acl.section_normalization import (
 )
 from citeevidence.analysis import (
     DEFAULT_EVIDENCE_CARDS,
+    DEFAULT_FINAL_CITED_PAPER_RANKING_REVERSAL,
+    DEFAULT_FINAL_CRITIQUE_BOTTLENECK_MAP,
+    DEFAULT_FINAL_EVIDENCE_CARDS,
+    DEFAULT_FINAL_OBJECT_FUNCTION_MATRIX,
+    DEFAULT_FINAL_OBJECT_INFRASTRUCTURE_SCORES,
+    DEFAULT_FINAL_RESULTS_REPORT,
+    DEFAULT_FINAL_RESULTS_SUMMARY,
     DEFAULT_OBJECT_GRAPH_EDGES,
     DEFAULT_OBJECT_GRAPH_NODES,
     DEFAULT_OBJECT_GRAPH_REPORT,
@@ -58,6 +65,7 @@ from citeevidence.analysis import (
     DEFAULT_PHASE2_QUEUE_PATH,
     DEFAULT_PHASE2_SOURCE_DATA_DIR,
     DEFAULT_SCISCI_FULL_REPORT,
+    run_final_results_analysis,
     run_object_graph_analysis,
     run_phase2_pilot_analysis,
     run_scisci_full_analysis,
@@ -498,6 +506,108 @@ def analyze_object_graph(
         f"Built {metrics['strict_nodes']} strict object nodes and "
         f"{metrics['strict_edges']} strict edges; evidence cards={metrics['evidence_cards']}. "
         f"Wrote {out_nodes}, {out_edges}, {out_cards}, and {out_report}."
+    )
+
+
+@analysis_app.command("final-results")
+def analyze_final_results(
+    phase2: Annotated[
+        Path,
+        typer.Option("--phase2", help="Final analysis-ready Phase-2 labels parquet."),
+    ] = DEFAULT_PHASE2_BATCH_ANALYSIS_READY_LABELS_PATH,
+    excluded: Annotated[
+        Path,
+        typer.Option("--excluded", help="Excluded revalidated Phase-2 labels parquet."),
+    ] = DEFAULT_PHASE2_BATCH_EXCLUDED_LABELS_PATH,
+    failed_diagnostics: Annotated[
+        Path,
+        typer.Option("--failed-diagnostics", help="Batch failed diagnostics parquet."),
+    ] = DEFAULT_PHASE2_BATCH_FAILED_DIAGNOSTICS_PATH,
+    object_graph_candidates: Annotated[
+        Path,
+        typer.Option("--object-graph-candidates", help="Object graph candidate parquet."),
+    ] = DEFAULT_FULL_OBJECT_GRAPH_CANDIDATES_PATH,
+    object_mentions: Annotated[
+        Path,
+        typer.Option("--object-mentions", help="Object mentions parquet."),
+    ] = DEFAULT_OBJECT_MENTIONS_PATH,
+    contexts: Annotated[
+        Path,
+        typer.Option("--contexts", help="Analysis-ready strong contexts parquet."),
+    ] = DEFAULT_ANALYSIS_READY_STRONG_CONTEXTS_PATH,
+    phase1: Annotated[
+        Path,
+        typer.Option("--phase1", help="Full Phase-1 candidate parquet."),
+    ] = DEFAULT_PHASE1_CANDIDATES_FULL_PATH,
+    out_report: Annotated[
+        Path,
+        typer.Option("--out-report", help="Output final results markdown report."),
+    ] = DEFAULT_FINAL_RESULTS_REPORT,
+    out_summary: Annotated[
+        Path,
+        typer.Option("--out-summary", help="Output final result summary CSV."),
+    ] = DEFAULT_FINAL_RESULTS_SUMMARY,
+    out_object_matrix: Annotated[
+        Path,
+        typer.Option("--out-object-matrix", help="Output final object-function matrix CSV."),
+    ] = DEFAULT_FINAL_OBJECT_FUNCTION_MATRIX,
+    out_infrastructure_scores: Annotated[
+        Path,
+        typer.Option(
+            "--out-infrastructure-scores",
+            help="Output final object infrastructure scores CSV.",
+        ),
+    ] = DEFAULT_FINAL_OBJECT_INFRASTRUCTURE_SCORES,
+    out_ranking_reversal: Annotated[
+        Path,
+        typer.Option("--out-ranking-reversal", help="Output final ranking reversal CSV."),
+    ] = DEFAULT_FINAL_CITED_PAPER_RANKING_REVERSAL,
+    out_critique_map: Annotated[
+        Path,
+        typer.Option("--out-critique-map", help="Output final critique bottleneck map CSV."),
+    ] = DEFAULT_FINAL_CRITIQUE_BOTTLENECK_MAP,
+    out_evidence_cards: Annotated[
+        Path,
+        typer.Option("--out-evidence-cards", help="Output final evidence cards CSV."),
+    ] = DEFAULT_FINAL_EVIDENCE_CARDS,
+    figures_dir: Annotated[
+        Path,
+        typer.Option("--figures-dir", help="Output directory for final figures."),
+    ] = DEFAULT_PHASE2_FIGURES_DIR,
+    source_data_dir: Annotated[
+        Path,
+        typer.Option("--source-data-dir", help="Output directory for final figure source CSVs."),
+    ] = DEFAULT_PHASE2_SOURCE_DATA_DIR,
+) -> None:
+    """Generate final publication-style full Batch Phase-2 analysis outputs."""
+    try:
+        metrics = run_final_results_analysis(
+            phase2_path=phase2,
+            excluded_path=excluded,
+            failed_diagnostics_path=failed_diagnostics,
+            object_graph_candidates_path=object_graph_candidates,
+            object_mentions_path=object_mentions,
+            contexts_path=contexts,
+            phase1_path=phase1,
+            out_report_path=out_report,
+            out_summary_path=out_summary,
+            out_object_matrix_path=out_object_matrix,
+            out_infrastructure_scores_path=out_infrastructure_scores,
+            out_ranking_reversal_path=out_ranking_reversal,
+            out_critique_map_path=out_critique_map,
+            out_evidence_cards_path=out_evidence_cards,
+            figures_dir=figures_dir,
+            source_data_dir=source_data_dir,
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        error_console.print(f"[red]Failed to generate final results:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    console.print(
+        f"Final labels={metrics['analysis_ready_phase2_labels']}; "
+        f"strict edges={metrics['evidence_backed_object_edges']}; "
+        f"strict nodes={metrics['evidence_backed_object_nodes']}; "
+        f"figures={metrics['figure_count']}. Wrote {out_report}."
     )
 
 

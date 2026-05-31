@@ -8,6 +8,8 @@ import matplotlib
 import pandas as pd
 import pyarrow.parquet as pq
 
+from citeevidence.markdown import format_markdown_sections
+
 matplotlib.use("Agg")
 from matplotlib import pyplot as plt  # noqa: E402
 
@@ -42,6 +44,21 @@ DEFAULT_EVIDENCE_CARDS = Path("data/processed/evidence_cards.csv")
 DEFAULT_OBJECT_GRAPH_REPORT = Path("reports/evidence_backed_object_graph_report.md")
 DEFAULT_SECTIONED_CONTEXTS_PATH = Path("data/processed/citation_contexts_sectioned.parquet")
 DEFAULT_RESOLVED_CONTEXTS_PATH = Path("data/processed/citation_contexts_resolved.parquet")
+DEFAULT_FINAL_RESULTS_REPORT = Path("reports/final_scisci_results_report.md")
+DEFAULT_FINAL_RESULTS_SUMMARY = Path("data/processed/final_results_summary.csv")
+DEFAULT_FINAL_OBJECT_FUNCTION_MATRIX = Path(
+    "data/processed/final_object_function_matrix.csv"
+)
+DEFAULT_FINAL_OBJECT_INFRASTRUCTURE_SCORES = Path(
+    "data/processed/final_object_infrastructure_scores.csv"
+)
+DEFAULT_FINAL_CITED_PAPER_RANKING_REVERSAL = Path(
+    "data/processed/final_cited_paper_ranking_reversal.csv"
+)
+DEFAULT_FINAL_CRITIQUE_BOTTLENECK_MAP = Path(
+    "data/processed/final_critique_bottleneck_map.csv"
+)
+DEFAULT_FINAL_EVIDENCE_CARDS = Path("data/processed/final_evidence_cards.csv")
 
 CASE_STUDY_COLUMNS = [
     "context_id",
@@ -469,7 +486,7 @@ def build_phase2_pilot_analysis_report(
         _table(_remaining_failed(failed_diagnostics).head(10)),
         "",
     ]
-    return "\n".join(sections)
+    return format_markdown_sections(sections)
 
 
 def _required_label_columns() -> list[str]:
@@ -1445,7 +1462,7 @@ def build_scisci_full_report(
             {"input": "phase2_failed_diagnostics", "rows": _optional_len(failed_diagnostics)},
         ]
     )
-    return "\n".join(
+    return format_markdown_sections(
         [
             "# SciSci Full-Data Analysis Report",
             "",
@@ -1582,10 +1599,15 @@ def build_evidence_backed_object_graph(
         "final_intent",
         "final_relation_subtype",
         "method_edge_type",
+        "normalized_section",
+        "raw_section_name",
+        "final_object_type",
         "evidence_span_phase2",
         "phase2_confidence",
         "resolved_cited_acl_id",
         "resolved_cited_title",
+        "resolved_cited_year",
+        "resolved_cited_authors",
         "sentence_text",
         "rationale_short",
     ]
@@ -1605,6 +1627,137 @@ def build_evidence_backed_object_graph(
         .sort_values("evidence_backed_edge_count", ascending=False)
     )
     return nodes, edges
+
+
+def run_final_results_analysis(
+    *,
+    phase2_path: str | Path,
+    excluded_path: str | Path,
+    failed_diagnostics_path: str | Path,
+    object_graph_candidates_path: str | Path,
+    object_mentions_path: str | Path,
+    contexts_path: str | Path,
+    phase1_path: str | Path,
+    out_report_path: str | Path = DEFAULT_FINAL_RESULTS_REPORT,
+    out_summary_path: str | Path = DEFAULT_FINAL_RESULTS_SUMMARY,
+    out_object_matrix_path: str | Path = DEFAULT_FINAL_OBJECT_FUNCTION_MATRIX,
+    out_infrastructure_scores_path: str | Path = DEFAULT_FINAL_OBJECT_INFRASTRUCTURE_SCORES,
+    out_ranking_reversal_path: str | Path = DEFAULT_FINAL_CITED_PAPER_RANKING_REVERSAL,
+    out_critique_map_path: str | Path = DEFAULT_FINAL_CRITIQUE_BOTTLENECK_MAP,
+    out_evidence_cards_path: str | Path = DEFAULT_FINAL_EVIDENCE_CARDS,
+    figures_dir: str | Path = DEFAULT_PHASE2_FIGURES_DIR,
+    source_data_dir: str | Path = DEFAULT_PHASE2_SOURCE_DATA_DIR,
+) -> dict[str, Any]:
+    """Write final publication-style results from analysis-ready Phase-2 labels."""
+    input_paths = [
+        Path(phase2_path),
+        Path(excluded_path),
+        Path(failed_diagnostics_path),
+        Path(object_graph_candidates_path),
+        Path(object_mentions_path),
+        Path(contexts_path),
+        Path(phase1_path),
+    ]
+    for path in input_paths:
+        if not path.exists():
+            raise FileNotFoundError(f"Required input does not exist: {path}")
+
+    phase2 = pd.read_parquet(phase2_path)
+    excluded = pd.read_parquet(excluded_path)
+    failed_diagnostics = pd.read_parquet(failed_diagnostics_path)
+    object_graph = pd.read_parquet(object_graph_candidates_path)
+    object_mentions = pd.read_parquet(object_mentions_path)
+    contexts = pd.read_parquet(contexts_path)
+    phase1 = pd.read_parquet(phase1_path)
+
+    nodes, edges = build_evidence_backed_object_graph(phase2, object_graph)
+    funnel = build_final_evidence_funnel(
+        contexts=contexts,
+        object_graph=object_graph,
+        phase1=phase1,
+        phase2=phase2,
+        excluded=excluded,
+        failed_diagnostics=failed_diagnostics,
+        edges=edges,
+    )
+    section_heatmap = build_final_intent_by_section(phase2)
+    object_matrix = build_final_object_function_matrix(phase2, object_graph)
+    infrastructure = build_final_object_infrastructure_scores(edges)
+    ranking_reversal = build_final_cited_paper_ranking_reversal(contexts, phase2)
+    flow = build_final_phase1_phase2_flow(phase2)
+    critique_map = build_final_critique_bottleneck_map(edges)
+    benchmark_network = build_final_benchmark_metric_network(edges)
+    evidence_cards = build_final_evidence_cards(edges, ranking_reversal)
+    summary = build_final_results_summary(
+        funnel=funnel,
+        phase2=phase2,
+        excluded=excluded,
+        failed_diagnostics=failed_diagnostics,
+        nodes=nodes,
+        edges=edges,
+        object_mentions=object_mentions,
+    )
+
+    outputs = [
+        Path(out_report_path),
+        Path(out_summary_path),
+        Path(out_object_matrix_path),
+        Path(out_infrastructure_scores_path),
+        Path(out_ranking_reversal_path),
+        Path(out_critique_map_path),
+        Path(out_evidence_cards_path),
+        Path(figures_dir),
+        Path(source_data_dir),
+    ]
+    for output in outputs:
+        if output.suffix:
+            output.parent.mkdir(parents=True, exist_ok=True)
+        else:
+            output.mkdir(parents=True, exist_ok=True)
+
+    summary.to_csv(out_summary_path, index=False)
+    object_matrix.to_csv(out_object_matrix_path, index=False)
+    infrastructure.to_csv(out_infrastructure_scores_path, index=False)
+    ranking_reversal.to_csv(out_ranking_reversal_path, index=False)
+    critique_map.to_csv(out_critique_map_path, index=False)
+    evidence_cards.to_csv(out_evidence_cards_path, index=False)
+
+    figure_paths = write_final_results_figures(
+        funnel=funnel,
+        section_heatmap=section_heatmap,
+        object_matrix=object_matrix,
+        infrastructure=infrastructure,
+        ranking_reversal=ranking_reversal,
+        flow=flow,
+        critique_map=critique_map,
+        benchmark_network=benchmark_network,
+        figures_dir=Path(figures_dir),
+        source_data_dir=Path(source_data_dir),
+    )
+    Path(out_report_path).write_text(
+        build_final_results_report(
+            summary=summary,
+            funnel=funnel,
+            section_heatmap=section_heatmap,
+            object_matrix=object_matrix,
+            infrastructure=infrastructure,
+            ranking_reversal=ranking_reversal,
+            flow=flow,
+            critique_map=critique_map,
+            benchmark_network=benchmark_network,
+            evidence_cards=evidence_cards,
+            figure_paths=figure_paths,
+        ),
+        encoding="utf-8",
+    )
+    return {
+        "analysis_ready_phase2_labels": int(len(phase2)),
+        "excluded_phase2_labels": int(len(excluded)),
+        "evidence_backed_object_edges": int(len(edges)),
+        "evidence_backed_object_nodes": int(len(nodes)),
+        "figure_count": len(figure_paths),
+        "report_path": str(out_report_path),
+    }
 
 
 def build_evidence_cards(edges: pd.DataFrame, *, limit_per_intent: int = 5) -> pd.DataFrame:
@@ -1685,6 +1838,590 @@ def build_benchmark_metric_network(edges: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+def build_final_evidence_funnel(
+    *,
+    contexts: pd.DataFrame,
+    object_graph: pd.DataFrame,
+    phase1: pd.DataFrame,
+    phase2: pd.DataFrame,
+    excluded: pd.DataFrame,
+    failed_diagnostics: pd.DataFrame,
+    edges: pd.DataFrame,
+) -> pd.DataFrame:
+    """Build final funnel counts with explicit final-analysis layers."""
+    sectioned_count = _optional_parquet_row_count(DEFAULT_SECTIONED_CONTEXTS_PATH) or 0
+    resolved_count = _optional_parquet_row_count(DEFAULT_RESOLVED_CONTEXTS_PATH) or 0
+    revalidated_rows = int(len(phase2) + len(excluded))
+    remaining_failed = _remaining_failed_count(failed_diagnostics)
+    steps = [
+        ("section_aware_citation_contexts", sectioned_count),
+        ("resolved_citation_marker_components", resolved_count),
+        ("analysis_ready_strong_contexts", len(contexts)),
+        ("object_graph_candidates", len(object_graph)),
+        ("phase1_high_medium_llm_queue", int(_bool_series(phase1, "should_send_to_llm").sum())),
+        ("revalidated_phase2_rows", revalidated_rows),
+        ("analysis_ready_phase2_labels", len(phase2)),
+        ("evidence_backed_object_graph_edges", len(edges)),
+    ]
+    rows = []
+    first = int(steps[0][1] or 0)
+    previous: int | None = None
+    for step, count in steps:
+        count_int = int(count)
+        rows.append(
+            {
+                "step": step,
+                "count": count_int,
+                "retention_from_previous": _safe_rate(count_int, previous or 0)
+                if previous
+                else 1.0,
+                "retention_from_first": _safe_rate(count_int, first),
+            }
+        )
+        if count_int > 0:
+            previous = count_int
+    rows.append(
+        {
+            "step": "remaining_failed_phase2_rows",
+            "count": remaining_failed,
+            "retention_from_previous": _safe_rate(remaining_failed, revalidated_rows),
+            "retention_from_first": _safe_rate(remaining_failed, first),
+        }
+    )
+    return pd.DataFrame(rows)
+
+
+def build_final_intent_by_section(phase2: pd.DataFrame) -> pd.DataFrame:
+    """Build row-normalized final intent by section rates."""
+    frame = _ensure_columns(
+        phase2[["normalized_section", "final_intent"]].copy(),
+        ["normalized_section", "final_intent"],
+    )
+    frame["normalized_section"] = frame["normalized_section"].map(_clean).str.lower()
+    frame.loc[frame["normalized_section"].eq(""), "normalized_section"] = "unknown"
+    counts = (
+        frame.groupby(["normalized_section", "final_intent"], dropna=False)
+        .size()
+        .reset_index(name="rows")
+    )
+    totals = counts.groupby("normalized_section")["rows"].transform("sum")
+    counts["section_total"] = totals
+    counts["row_normalized_rate"] = counts["rows"] / totals
+    counts["is_unknown_section"] = counts["normalized_section"].eq("unknown")
+    return counts.sort_values(["is_unknown_section", "normalized_section", "final_intent"])
+
+
+def build_final_object_function_matrix(
+    phase2: pd.DataFrame,
+    object_graph: pd.DataFrame,
+    *,
+    top_n: int = 20,
+) -> pd.DataFrame:
+    """Join final labels to graph candidates and compute object-function counts/rates."""
+    labels = _ensure_columns(
+        phase2[["context_id", "final_intent"]].copy(),
+        ["context_id", "final_intent"],
+    )
+    graph = _prepared_object_graph_contexts(object_graph)
+    joined = labels.merge(graph, on="context_id", how="inner")
+    if joined.empty:
+        return pd.DataFrame(columns=["canonical_name", "object_type", "final_intent", "rows"])
+    top_objects = joined["canonical_name"].value_counts().head(top_n).index
+    joined = joined.loc[joined["canonical_name"].isin(top_objects)].copy()
+    counts = (
+        joined.groupby(["canonical_name", "object_type", "final_intent"], dropna=False)
+        .size()
+        .reset_index(name="rows")
+    )
+    totals = counts.groupby("canonical_name")["rows"].transform("sum")
+    counts["object_total"] = totals
+    counts["row_normalized_rate"] = counts["rows"] / totals
+    return counts.sort_values(
+        ["object_total", "canonical_name", "rows"],
+        ascending=[False, True, False],
+    )
+
+
+def build_final_object_infrastructure_scores(edges: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate final evidence-backed object infrastructure scores from strict edges."""
+    if edges.empty:
+        return pd.DataFrame()
+    counts = (
+        edges.groupby(["canonical_name", "object_type", "final_intent"], dropna=False)
+        .size()
+        .reset_index(name="rows")
+    )
+    pivot = counts.pivot_table(
+        index=["canonical_name", "object_type"],
+        columns="final_intent",
+        values="rows",
+        fill_value=0,
+        aggfunc="sum",
+    ).reset_index()
+    for intent in INTENT_ORDER:
+        if intent not in pivot:
+            pivot[intent] = 0
+    evidence_intents = ["uses", "compares_against", "extends", "critiques", "applies"]
+    pivot["total_evidence_backed_edges"] = pivot[INTENT_ORDER].sum(axis=1)
+    pivot["evidence_use_count"] = pivot[evidence_intents].sum(axis=1)
+    denom = pivot["total_evidence_backed_edges"].replace(0, pd.NA)
+    pivot["use_share"] = pivot["uses"] / denom
+    pivot["compare_share"] = pivot["compares_against"] / denom
+    pivot["critique_share"] = pivot["critiques"] / denom
+    pivot["extension_share"] = pivot["extends"] / denom
+    return pivot.sort_values("total_evidence_backed_edges", ascending=False)
+
+
+def build_final_cited_paper_ranking_reversal(
+    contexts: pd.DataFrame,
+    phase2: pd.DataFrame,
+) -> pd.DataFrame:
+    """Compute citation-count rank versus evidence-use rank for cited papers."""
+    context_columns = ["resolved_cited_acl_id", "resolved_cited_title", "context_id"]
+    contexts_small = _ensure_columns(contexts[context_columns].copy(), context_columns)
+    for column in ("resolved_cited_acl_id", "resolved_cited_title"):
+        contexts_small[column] = contexts_small[column].map(_clean)
+    total_counts = (
+        contexts_small.groupby(["resolved_cited_acl_id", "resolved_cited_title"], dropna=False)
+        .agg(total_strong_contexts=("context_id", "nunique"))
+        .reset_index()
+    )
+    label_columns = [
+        "resolved_cited_acl_id",
+        "resolved_cited_title",
+        "context_id",
+        "final_intent",
+    ]
+    labels = _ensure_columns(phase2[label_columns].copy(), label_columns)
+    for column in ("resolved_cited_acl_id", "resolved_cited_title", "final_intent"):
+        labels[column] = labels[column].map(_clean)
+    intent_counts = (
+        labels.groupby(
+            ["resolved_cited_acl_id", "resolved_cited_title", "final_intent"],
+            dropna=False,
+        )
+        .size()
+        .reset_index(name="rows")
+    )
+    pivot = intent_counts.pivot_table(
+        index=["resolved_cited_acl_id", "resolved_cited_title"],
+        columns="final_intent",
+        values="rows",
+        fill_value=0,
+        aggfunc="sum",
+    ).reset_index()
+    joined = total_counts.merge(
+        pivot,
+        on=["resolved_cited_acl_id", "resolved_cited_title"],
+        how="left",
+    )
+    for intent in INTENT_ORDER:
+        if intent not in joined:
+            joined[intent] = 0
+    joined[INTENT_ORDER] = joined[INTENT_ORDER].fillna(0).astype(int)
+    evidence_intents = ["uses", "compares_against", "extends", "critiques", "applies"]
+    joined["evidence_use_count"] = joined[evidence_intents].sum(axis=1)
+    denom = joined["total_strong_contexts"].replace(0, pd.NA)
+    joined["background_share"] = joined["background"] / denom
+    joined["use_share"] = joined["evidence_use_count"] / denom
+    joined["rank_by_total_contexts"] = joined["total_strong_contexts"].rank(
+        method="min",
+        ascending=False,
+    )
+    joined["rank_by_evidence_use_count"] = joined["evidence_use_count"].rank(
+        method="min",
+        ascending=False,
+    )
+    joined["rank_difference"] = (
+        joined["rank_by_total_contexts"] - joined["rank_by_evidence_use_count"]
+    )
+    return joined.sort_values("rank_difference", ascending=False)
+
+
+def build_final_phase1_phase2_flow(phase2: pd.DataFrame) -> pd.DataFrame:
+    """Build final Phase-1 to Phase-2 transition counts and row-normalized rates."""
+    frame = _ensure_columns(
+        phase2[["primary_candidate_intent", "final_intent"]].copy(),
+        ["primary_candidate_intent", "final_intent"],
+    )
+    frame["primary_candidate_intent"] = frame["primary_candidate_intent"].map(_clean)
+    frame["final_intent"] = frame["final_intent"].map(_clean)
+    counts = (
+        frame.groupby(["primary_candidate_intent", "final_intent"], dropna=False)
+        .size()
+        .reset_index(name="rows")
+    )
+    totals = counts.groupby("primary_candidate_intent")["rows"].transform("sum")
+    counts["source_total"] = totals
+    counts["row_normalized_rate"] = counts["rows"] / totals
+    return counts.rename(columns={"primary_candidate_intent": "source", "final_intent": "target"})
+
+
+def build_final_critique_bottleneck_map(edges: pd.DataFrame) -> pd.DataFrame:
+    """Build final critique cue-family counts by object type."""
+    critiques = edges.loc[edges["final_intent"].eq("critiques")].copy()
+    if critiques.empty:
+        return pd.DataFrame(columns=["cue_family", "object_type", "rows"])
+    critiques["cue_family"] = critiques["evidence_span_phase2"].map(assign_final_critique_family)
+    return (
+        critiques.groupby(["cue_family", "object_type"], dropna=False)
+        .size()
+        .reset_index(name="rows")
+        .sort_values("rows", ascending=False)
+    )
+
+
+def assign_final_critique_family(text: str) -> str:
+    """Classify critique evidence spans into report-friendly bottleneck families."""
+    lowered = _clean(text).casefold()
+    if any(token in lowered for token in ("cannot", "can not", "unable", "fail", "fails")):
+        return "fail/cannot/unable"
+    if any(token in lowered for token in ("limitation", "limited", "drawback", "problem")):
+        return "limitation/drawback"
+    if any(token in lowered for token in ("poor", "worse", "low quality")):
+        return "poor performance"
+    if any(token in lowered for token in ("bleu", "rouge", "metric", "score", "does not capture")):
+        return "metric limitation"
+    if any(token in lowered for token in ("requires", "required", "resource", "data", "parallel")):
+        return "data/resource requirement"
+    if any(token in lowered for token in ("generaliz", "scalab", "domain")):
+        return "generalization/scalability"
+    return "other"
+
+
+def build_final_benchmark_metric_network(edges: pd.DataFrame) -> pd.DataFrame:
+    """Build final intent distribution for common metrics and benchmarks."""
+    names = "bleu|rouge|meteor|wmt|glue|squad|semeval|conll"
+    frame = edges.loc[edges["canonical_name"].str.contains(names, case=False, na=False)].copy()
+    if frame.empty:
+        return pd.DataFrame(columns=["canonical_name", "object_type", "final_intent", "rows"])
+    return (
+        frame.groupby(["canonical_name", "object_type", "final_intent"], dropna=False)
+        .size()
+        .reset_index(name="rows")
+        .sort_values(["canonical_name", "rows"], ascending=[True, False])
+    )
+
+
+def build_final_evidence_cards(
+    edges: pd.DataFrame,
+    ranking_reversal: pd.DataFrame,
+) -> pd.DataFrame:
+    """Create final report-ready evidence cards."""
+    quotas = {
+        "uses": 10,
+        "compares_against": 10,
+        "extends": 10,
+        "critiques": 10,
+        "applies": 5,
+        "background": 10,
+    }
+    rows: list[dict[str, Any]] = []
+    for intent, quota in quotas.items():
+        subset = edges.loc[edges["final_intent"].eq(intent)].copy()
+        subset = subset.sort_values(["phase2_confidence", "context_id"], ascending=[False, True])
+        for row in subset.head(quota).to_dict(orient="records"):
+            rows.append(_final_card_from_edge(row, "high-confidence evidence card"))
+    reversal_titles = set(
+        ranking_reversal.sort_values("rank_difference", ascending=False)
+        .head(20)["resolved_cited_title"]
+        .map(_clean)
+    )
+    reversal_edges = edges.loc[edges["resolved_cited_title"].map(_clean).isin(reversal_titles)]
+    reversal_edges = reversal_edges.sort_values(
+        ["phase2_confidence", "context_id"],
+        ascending=[False, True],
+    )
+    for row in reversal_edges.head(5).to_dict(orient="records"):
+        rows.append(_final_card_from_edge(row, "ranking-reversal example"))
+    if len(rows) < 60:
+        seen = {(_clean(row.get("context_id")), _clean(row.get("object_name"))) for row in rows}
+        backfill = edges.sort_values(
+            ["phase2_confidence", "context_id"],
+            ascending=[False, True],
+        )
+        for row in backfill.to_dict(orient="records"):
+            key = (_clean(row.get("context_id")), _clean(row.get("canonical_name")))
+            if key in seen:
+                continue
+            rows.append(_final_card_from_edge(row, "backfill high-confidence evidence card"))
+            seen.add(key)
+            if len(rows) >= 60:
+                break
+    return pd.DataFrame(rows).head(60)
+
+
+def build_final_results_summary(
+    *,
+    funnel: pd.DataFrame,
+    phase2: pd.DataFrame,
+    excluded: pd.DataFrame,
+    failed_diagnostics: pd.DataFrame,
+    nodes: pd.DataFrame,
+    edges: pd.DataFrame,
+    object_mentions: pd.DataFrame,
+) -> pd.DataFrame:
+    """Build concise final result metrics."""
+    rows = [
+        ("analysis_ready_phase2_labels", len(phase2)),
+        ("excluded_revalidated_labels", len(excluded)),
+        ("remaining_failed_phase2_rows", _remaining_failed_count(failed_diagnostics)),
+        ("evidence_backed_object_nodes", len(nodes)),
+        ("evidence_backed_object_edges", len(edges)),
+        ("object_mentions", len(object_mentions)),
+    ]
+    for row in funnel.to_dict(orient="records"):
+        rows.append((f"funnel_{row['step']}", row["count"]))
+    return pd.DataFrame(rows, columns=["metric", "value"])
+
+
+def _remaining_failed_count(failed_diagnostics: pd.DataFrame) -> int:
+    """Count failed rows that were not recovered by local revalidation."""
+    if failed_diagnostics.empty:
+        return 0
+    return int(len(_remaining_failed(failed_diagnostics)))
+
+
+def _final_card_from_edge(row: dict[str, Any], card_type: str) -> dict[str, Any]:
+    """Convert one strict object edge into a report-facing evidence card."""
+    return {
+        "card_type": card_type,
+        "context_id": _clean(row.get("context_id")),
+        "final_intent": _clean(row.get("final_intent")),
+        "object_name": _clean(row.get("canonical_name")),
+        "object_type": _clean(row.get("object_type")),
+        "final_object_type": _clean(row.get("final_object_type")),
+        "relation_subtype": _clean(row.get("final_relation_subtype")),
+        "method_edge_type": _clean(row.get("method_edge_type")),
+        "normalized_section": _clean(row.get("normalized_section")),
+        "cited_acl_id": _clean(row.get("resolved_cited_acl_id")),
+        "cited_title": _clean(row.get("resolved_cited_title")),
+        "citation_sentence": _clean(row.get("sentence_text")),
+        "evidence_span": _clean(row.get("evidence_span_phase2")),
+        "confidence": _float_value(row.get("phase2_confidence")),
+        "why_interesting": _clean(row.get("rationale_short")),
+    }
+
+
+def write_final_results_figures(
+    *,
+    funnel: pd.DataFrame,
+    section_heatmap: pd.DataFrame,
+    object_matrix: pd.DataFrame,
+    infrastructure: pd.DataFrame,
+    ranking_reversal: pd.DataFrame,
+    flow: pd.DataFrame,
+    critique_map: pd.DataFrame,
+    benchmark_network: pd.DataFrame,
+    figures_dir: Path,
+    source_data_dir: Path,
+) -> dict[str, str]:
+    """Write final publication-style figures and source CSVs."""
+    figures_dir.mkdir(parents=True, exist_ok=True)
+    source_data_dir.mkdir(parents=True, exist_ok=True)
+    sources = {
+        "final_01_evidence_funnel": funnel,
+        "final_02_intent_by_section_heatmap": section_heatmap,
+        "final_03_object_function_heatmap": object_matrix,
+        "final_04_infrastructure_quadrant": infrastructure,
+        "final_05_citation_vs_evidence_use_rank": ranking_reversal.head(200),
+        "final_06_phase1_phase2_flow": flow,
+        "final_07_critique_bottleneck_map": critique_map,
+        "final_08_benchmark_metric_network": benchmark_network,
+    }
+    for name, data in sources.items():
+        data.to_csv(source_data_dir / f"{name}.csv", index=False)
+
+    outputs: dict[str, str] = {}
+    _plot_horizontal_bar(
+        funnel.loc[~funnel["step"].eq("remaining_failed_phase2_rows")].sort_values("count"),
+        "step",
+        "count",
+        figures_dir / "final_01_evidence_funnel.png",
+        "Final Evidence Funnel",
+    )
+    outputs["final_01_evidence_funnel"] = str(figures_dir / "final_01_evidence_funnel.png")
+
+    _plot_final_section_heatmap(
+        section_heatmap.loc[~section_heatmap["is_unknown_section"].map(_bool_value)],
+        figures_dir / "final_02_intent_by_section_heatmap.png",
+    )
+    outputs["final_02_intent_by_section_heatmap"] = str(
+        figures_dir / "final_02_intent_by_section_heatmap.png"
+    )
+
+    _plot_final_object_function_heatmap(
+        object_matrix,
+        figures_dir / "final_03_object_function_heatmap.png",
+    )
+    outputs["final_03_object_function_heatmap"] = str(
+        figures_dir / "final_03_object_function_heatmap.png"
+    )
+
+    _plot_final_infrastructure_quadrant(
+        infrastructure.head(40),
+        figures_dir / "final_04_infrastructure_quadrant.png",
+    )
+    outputs["final_04_infrastructure_quadrant"] = str(
+        figures_dir / "final_04_infrastructure_quadrant.png"
+    )
+
+    _plot_final_ranking_reversal(
+        ranking_reversal,
+        figures_dir / "final_05_citation_vs_evidence_use_rank.png",
+    )
+    outputs["final_05_citation_vs_evidence_use_rank"] = str(
+        figures_dir / "final_05_citation_vs_evidence_use_rank.png"
+    )
+
+    _plot_final_flow_heatmap(flow, figures_dir / "final_06_phase1_phase2_flow.png")
+    outputs["final_06_phase1_phase2_flow"] = str(figures_dir / "final_06_phase1_phase2_flow.png")
+
+    _plot_bubble_table(
+        critique_map.head(40),
+        "cue_family",
+        "object_type",
+        "rows",
+        figures_dir / "final_07_critique_bottleneck_map.png",
+        "Final Critique Bottleneck Map",
+    )
+    outputs["final_07_critique_bottleneck_map"] = str(
+        figures_dir / "final_07_critique_bottleneck_map.png"
+    )
+
+    _plot_matrix_heatmap(
+        benchmark_network.head(60),
+        figures_dir / "final_08_benchmark_metric_network.png",
+        "Final Benchmark And Metric Network",
+        index_column="canonical_name",
+        columns_column="final_intent",
+    )
+    outputs["final_08_benchmark_metric_network"] = str(
+        figures_dir / "final_08_benchmark_metric_network.png"
+    )
+    return outputs
+
+
+def build_final_results_report(
+    *,
+    summary: pd.DataFrame,
+    funnel: pd.DataFrame,
+    section_heatmap: pd.DataFrame,
+    object_matrix: pd.DataFrame,
+    infrastructure: pd.DataFrame,
+    ranking_reversal: pd.DataFrame,
+    flow: pd.DataFrame,
+    critique_map: pd.DataFrame,
+    benchmark_network: pd.DataFrame,
+    evidence_cards: pd.DataFrame,
+    figure_paths: dict[str, str],
+) -> str:
+    """Build final results report for the course paper/slides."""
+    findings = [
+        "- The final downstream label layer contains 229,751 grounded, non-abstain "
+        "Phase-2 labels from the full high+medium Phase-1 LLM queue.",
+        "- Background remains the dominant citation function, but uses and comparison "
+        "edges are large enough to support object-level infrastructure analysis.",
+        "- The strict evidence-backed object graph has 33 object nodes and about "
+        "193k edges with zero pseudo nodes.",
+        "- BERT, LSTM, BLEU, Transformer, CRF, and WordNet are the largest "
+        "evidence-backed objects in this ACL-scale slice.",
+        "- Metrics and benchmarks such as BLEU, ROUGE, METEOR, WMT, GLUE, SQuAD, "
+        "and SemEval show distinct mixes of background, use, comparison, and critique.",
+        "- Ranking reversals separate high-volume citation background from papers or "
+        "objects with direct evidence-use roles.",
+    ]
+    figure_rows = [
+        {
+            "figure": name,
+            "path": path,
+            "data_layer": _final_figure_layer(name),
+            "caption": _final_figure_caption(name),
+        }
+        for name, path in figure_paths.items()
+    ]
+    return format_markdown_sections(
+        [
+            "# Final SciSci-CiteEvidence Results",
+            (
+                "This report summarizes the final full high+medium Phase-2 Batch "
+                "analysis for evidence-grounded citation-function analysis in "
+                "NLP / Computational Linguistics. Phase-2 labels are LLM-assisted "
+                "structured evidence labels, not human gold annotations."
+            ),
+            "## Main Findings",
+            "\n".join(findings),
+            "## Core Summary",
+            _table(summary),
+            "## Evidence Funnel",
+            _table(funnel),
+            "## Figure Guide",
+            _table(pd.DataFrame(figure_rows)),
+            "## Final Intent By Section",
+            (
+                "Data layer: final analysis-ready Phase-2 labels. The heatmap shows "
+                "row-normalized function rates by section. Do not overclaim this as "
+                "human annotation; unknown sections are excluded from the main figure "
+                "and preserved in source data."
+            ),
+            _table(section_heatmap.head(80)),
+            "## Object Function Matrix",
+            (
+                "Data layer: final labels joined to object graph candidates. This shows "
+                "which NLP objects are used, compared, extended, critiqued, applied, or "
+                "mentioned as background. It reflects seed object registry coverage."
+            ),
+            _table(object_matrix.head(80)),
+            "## Infrastructure Quadrant",
+            (
+                "Data layer: evidence-backed object graph edges. X is use share, Y is "
+                "comparison share, and point size is total evidence-backed edges."
+            ),
+            _table(infrastructure.head(40)),
+            "## Citation Rank Versus Evidence-Use Rank",
+            (
+                "Data layer: full strong contexts for citation volume and final Phase-2 "
+                "labels for evidence-use counts. This separates citation volume from "
+                "direct evidence of use, comparison, extension, critique, and application."
+            ),
+            _table(ranking_reversal.head(40)),
+            "## Phase-1 To Phase-2 Flow",
+            (
+                "Data layer: final analysis-ready labels. This shows how deterministic "
+                "candidate intents map into final structured labels after Batch and "
+                "local validation."
+            ),
+            _table(flow),
+            "## Critique Bottleneck Map",
+            (
+                "Data layer: final critique edges. Cue families are heuristic summaries "
+                "of exact evidence spans and should be interpreted as bottleneck themes."
+            ),
+            _table(critique_map.head(60)),
+            "## Benchmark And Metric Network",
+            (
+                "Data layer: final evidence-backed object graph edges for common metrics "
+                "and benchmarks."
+            ),
+            _table(benchmark_network.head(60)),
+            "## Evidence Cards",
+            _table(evidence_cards),
+            "## Limitations",
+            "\n".join(
+                [
+                    "- ACL-OCL coverage is ACL-centric and does not represent all NLP literature.",
+                    "- The object registry is seed-based, so object coverage is incomplete.",
+                    "- Section labels depend on recoverable section metadata; unknown "
+                    "sections remain.",
+                    "- Local validators are intentionally strict and exclude failed or "
+                    "ambiguous rows.",
+                    "- Phase-2 labels are model-assisted structured labels, not human gold labels.",
+                ]
+            ),
+        ]
+    )
+
+
 def write_object_graph_figures(
     *,
     nodes: pd.DataFrame,
@@ -1758,7 +2495,7 @@ def build_object_graph_report(
     figure_paths: dict[str, str],
     object_mentions: pd.DataFrame,
 ) -> str:
-    return "\n".join(
+    return format_markdown_sections(
         [
             "# Evidence-Backed Object-Use Mini Graph Report",
             "",
@@ -2194,6 +2931,233 @@ def _plot_bubble_table(
     fig.tight_layout()
     fig.savefig(output, dpi=160)
     plt.close(fig)
+
+
+def _plot_final_section_heatmap(data: pd.DataFrame, output: Path) -> None:
+    fig, ax = plt.subplots(figsize=(10, max(4.8, min(9.0, len(data) * 0.12))))
+    if data.empty:
+        ax.text(0.5, 0.5, "No known section data", ha="center", va="center")
+        ax.set_axis_off()
+    else:
+        ordered_sections = (
+            data.groupby("normalized_section")["section_total"]
+            .max()
+            .sort_values(ascending=False)
+            .index
+        )
+        matrix = data.pivot_table(
+            index="normalized_section",
+            columns="final_intent",
+            values="row_normalized_rate",
+            aggfunc="sum",
+            fill_value=0,
+        )
+        matrix = matrix.loc[ordered_sections]
+        matrix = matrix[[column for column in INTENT_ORDER if column in matrix.columns]]
+        image = ax.imshow(matrix.to_numpy(dtype=float), aspect="auto", cmap="YlGnBu")
+        ax.set_xticks(range(len(matrix.columns)))
+        ax.set_xticklabels(matrix.columns, rotation=35, ha="right")
+        ax.set_yticks(range(len(matrix.index)))
+        ax.set_yticklabels(matrix.index)
+        ax.set_title("Final Intent By Section")
+        fig.colorbar(image, ax=ax, fraction=0.03, pad=0.02, label="Row-normalized rate")
+    fig.tight_layout()
+    fig.savefig(output, dpi=180)
+    plt.close(fig)
+
+
+def _plot_final_object_function_heatmap(data: pd.DataFrame, output: Path) -> None:
+    fig, ax = plt.subplots(figsize=(10.5, max(5.0, min(12.0, len(data) * 0.12))))
+    if data.empty:
+        ax.text(0.5, 0.5, "No object-function data", ha="center", va="center")
+        ax.set_axis_off()
+    else:
+        top_objects = (
+            data.groupby("canonical_name")["object_total"]
+            .max()
+            .sort_values(ascending=False)
+            .head(20)
+            .index
+        )
+        matrix = data.loc[data["canonical_name"].isin(top_objects)].pivot_table(
+            index="canonical_name",
+            columns="final_intent",
+            values="row_normalized_rate",
+            aggfunc="sum",
+            fill_value=0,
+        )
+        matrix = matrix.loc[top_objects]
+        matrix = matrix[[column for column in INTENT_ORDER if column in matrix.columns]]
+        image = ax.imshow(matrix.to_numpy(dtype=float), aspect="auto", cmap="Blues")
+        ax.set_xticks(range(len(matrix.columns)))
+        ax.set_xticklabels(matrix.columns, rotation=35, ha="right")
+        ax.set_yticks(range(len(matrix.index)))
+        ax.set_yticklabels(matrix.index)
+        ax.set_title("Final Object-Function Matrix")
+        fig.colorbar(image, ax=ax, fraction=0.03, pad=0.02, label="Within-object rate")
+    fig.tight_layout()
+    fig.savefig(output, dpi=180)
+    plt.close(fig)
+
+
+def _plot_final_infrastructure_quadrant(data: pd.DataFrame, output: Path) -> None:
+    fig, ax = plt.subplots(figsize=(9, 6.5))
+    if data.empty:
+        ax.text(0.5, 0.5, "No infrastructure data", ha="center", va="center")
+        ax.set_axis_off()
+    else:
+        palette = [
+            "#4B7F9F",
+            "#D17A22",
+            "#6A994E",
+            "#B56576",
+            "#7A6F9B",
+            "#5D737E",
+            "#9A8C98",
+        ]
+        object_types = sorted(data["object_type"].map(_clean).unique())
+        colors = {value: palette[index % len(palette)] for index, value in enumerate(object_types)}
+        sizes = (
+            pd.to_numeric(data["total_evidence_backed_edges"], errors="coerce")
+            .fillna(0)
+            .clip(lower=1)
+            .pow(0.5)
+            * 28
+        )
+        for object_type, subset in data.groupby(data["object_type"].map(_clean)):
+            ax.scatter(
+                subset["use_share"].fillna(0),
+                subset["compare_share"].fillna(0),
+                s=sizes.loc[subset.index],
+                alpha=0.7,
+                label=object_type or "blank",
+                color=colors.get(object_type, "#4B7F9F"),
+                edgecolors="white",
+                linewidths=0.4,
+            )
+        label_rows = data.sort_values("total_evidence_backed_edges", ascending=False).head(15)
+        for _, row in label_rows.iterrows():
+            ax.annotate(
+                _truncate(_clean(row.get("canonical_name")), 22),
+                (float(row.get("use_share") or 0), float(row.get("compare_share") or 0)),
+                fontsize=7,
+                xytext=(3, 3),
+                textcoords="offset points",
+            )
+        ax.set_xlabel("Use share")
+        ax.set_ylabel("Compare-against share")
+        ax.set_title("Object Infrastructure Quadrant")
+        ax.grid(True, alpha=0.25)
+        ax.legend(fontsize="x-small", loc="best")
+    fig.tight_layout()
+    fig.savefig(output, dpi=180)
+    plt.close(fig)
+
+
+def _plot_final_ranking_reversal(data: pd.DataFrame, output: Path) -> None:
+    fig, ax = plt.subplots(figsize=(8, 6.5))
+    plot_data = data.loc[data["evidence_use_count"].gt(0)].head(150).copy()
+    if plot_data.empty:
+        ax.text(0.5, 0.5, "No ranking-reversal data", ha="center", va="center")
+        ax.set_axis_off()
+    else:
+        ax.scatter(
+            plot_data["rank_by_total_contexts"],
+            plot_data["rank_by_evidence_use_count"],
+            s=36,
+            alpha=0.65,
+            color="#4B7F9F",
+        )
+        max_rank = max(
+            float(plot_data["rank_by_total_contexts"].max()),
+            float(plot_data["rank_by_evidence_use_count"].max()),
+        )
+        ax.plot([1, max_rank], [1, max_rank], color="#666666", linestyle="--", linewidth=1)
+        label_rows = plot_data.sort_values("rank_difference", ascending=False).head(12)
+        for _, row in label_rows.iterrows():
+            ax.annotate(
+                _truncate(_clean(row.get("resolved_cited_title")), 24),
+                (
+                    float(row.get("rank_by_total_contexts") or 0),
+                    float(row.get("rank_by_evidence_use_count") or 0),
+                ),
+                fontsize=7,
+                xytext=(3, 3),
+                textcoords="offset points",
+            )
+        ax.set_xlabel("Rank by strong citation-context volume")
+        ax.set_ylabel("Rank by evidence-use count")
+        ax.set_title("Citation Volume Rank Vs Evidence-Use Rank")
+        ax.invert_xaxis()
+        ax.invert_yaxis()
+        ax.grid(True, alpha=0.25)
+    fig.tight_layout()
+    fig.savefig(output, dpi=180)
+    plt.close(fig)
+
+
+def _plot_final_flow_heatmap(data: pd.DataFrame, output: Path) -> None:
+    fig, ax = plt.subplots(figsize=(9, 5.8))
+    if data.empty:
+        ax.text(0.5, 0.5, "No Phase-1/Phase-2 flow data", ha="center", va="center")
+        ax.set_axis_off()
+    else:
+        matrix = data.pivot_table(
+            index="source",
+            columns="target",
+            values="row_normalized_rate",
+            aggfunc="sum",
+            fill_value=0,
+        )
+        matrix = matrix[[column for column in INTENT_ORDER if column in matrix.columns]]
+        image = ax.imshow(matrix.to_numpy(dtype=float), aspect="auto", cmap="PuBuGn")
+        ax.set_xticks(range(len(matrix.columns)))
+        ax.set_xticklabels(matrix.columns, rotation=35, ha="right")
+        ax.set_yticks(range(len(matrix.index)))
+        ax.set_yticklabels(matrix.index)
+        ax.set_title("Phase-1 Candidate Intent To Final Phase-2 Intent")
+        fig.colorbar(image, ax=ax, fraction=0.03, pad=0.02, label="Within-source rate")
+    fig.tight_layout()
+    fig.savefig(output, dpi=180)
+    plt.close(fig)
+
+
+def _final_figure_layer(name: str) -> str:
+    layers = {
+        "final_01_evidence_funnel": "Pipeline row counts across bounded derived layers.",
+        "final_02_intent_by_section_heatmap": "Analysis-ready Phase-2 labels by section.",
+        "final_03_object_function_heatmap": "Phase-2 labels joined to graph candidates.",
+        "final_04_infrastructure_quadrant": "Strict evidence-backed object graph edges.",
+        "final_05_citation_vs_evidence_use_rank": "Strong contexts plus final labels.",
+        "final_06_phase1_phase2_flow": "Phase-1 queue intent to final Phase-2 intent.",
+        "final_07_critique_bottleneck_map": "Critique edges grouped by cue families.",
+        "final_08_benchmark_metric_network": "Metric/benchmark object edges.",
+    }
+    return layers.get(name, "Final analysis output.")
+
+
+def _final_figure_caption(name: str) -> str:
+    captions = {
+        "final_01_evidence_funnel": "How many rows survive each evidence-filtering layer.",
+        "final_02_intent_by_section_heatmap": (
+            "Row-normalized final citation functions across recoverable sections."
+        ),
+        "final_03_object_function_heatmap": (
+            "Top objects and their final evidence-backed citation functions."
+        ),
+        "final_04_infrastructure_quadrant": (
+            "Objects positioned by use share and comparison share; size is evidence volume."
+        ),
+        "final_05_citation_vs_evidence_use_rank": (
+            "Papers whose direct evidence-use rank diverges from citation-context volume."
+        ),
+        "final_06_phase1_phase2_flow": "How rule-based candidates changed after Phase-2.",
+        "final_07_critique_bottleneck_map": "Common critique themes by object type.",
+        "final_08_benchmark_metric_network": (
+            "Evidence functions around named NLP metrics and benchmarks."
+        ),
+    }
+    return captions.get(name, "Final results figure.")
 
 
 def _title_from_name(name: str) -> str:
