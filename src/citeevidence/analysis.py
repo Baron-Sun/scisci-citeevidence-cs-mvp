@@ -24,7 +24,7 @@ DEFAULT_OBJECT_FUNCTION_MATRIX_PHASE1 = Path(
     "data/processed/object_function_matrix_full_phase1.csv"
 )
 DEFAULT_OBJECT_FUNCTION_MATRIX_PHASE2 = Path(
-    "data/processed/object_function_matrix_phase2_pilot.csv"
+    "data/processed/object_function_matrix_phase2_batch.csv"
 )
 DEFAULT_PHASE1_PHASE2_CALIBRATION = Path(
     "data/processed/phase1_phase2_calibration_by_stratum.csv"
@@ -1451,7 +1451,7 @@ def build_scisci_full_report(
             "",
             "This report uses deterministic full-data Phase-1 candidates and object matches. "
             "These full-data counts are candidate-level signals, not human gold labels. "
-            "The Phase-2 pilot remains the schema-validated evidence-backed sample.",
+            "The Phase-2 Batch analysis-ready table is the final evidence-backed sample.",
             "",
             "## Evidence Funnel",
             _table(funnel),
@@ -1462,7 +1462,7 @@ def build_scisci_full_report(
             "## Top Full Phase-1 Object-Function Matrix",
             _table(object_matrix_phase1.head(30)),
             "",
-            "## Top Phase-2 Pilot Object-Function Matrix",
+            "## Top Phase-2 Batch Analysis-Ready Object-Function Matrix",
             _table(object_matrix_phase2.head(30)),
             "",
             "## Phase-1 To Phase-2 Correction Flow",

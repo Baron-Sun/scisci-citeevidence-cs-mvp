@@ -1,0 +1,16 @@
+metric,value
+total_batch_requested_rows,306231
+total_revalidated_rows,237697
+analysis_ready_rows,229751
+excluded_rows,7946
+remaining_failed_rows,68534
+final_effective_success_rate,0.750254
+duplicate_context_id_count_before,0
+duplicate_context_id_count_after,0
+evidence_span_not_grounded_after,0
+stored_object_graph_edges,193287
+recomputed_object_graph_edges,193287
+object_graph_edge_count_delta,0
+pseudo_node_count,0
+pseudo_nodes,
+recommended_downstream_table,data/processed/phase2_batch_analysis_ready_labels.parquet

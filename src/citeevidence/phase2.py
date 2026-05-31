@@ -95,6 +95,21 @@ DEFAULT_PHASE2_RETRY_BATCH_REQUESTS_PATH = Path(
 DEFAULT_PHASE2_RETRY_BATCH_MANIFEST_PATH = Path(
     "data/batch/phase2_retry_batch_manifest.json"
 )
+DEFAULT_PHASE2_BATCH_ANALYSIS_READY_LABELS_PATH = Path(
+    "data/processed/phase2_batch_analysis_ready_labels.parquet"
+)
+DEFAULT_PHASE2_BATCH_EXCLUDED_LABELS_PATH = Path(
+    "data/processed/phase2_batch_excluded_labels.parquet"
+)
+DEFAULT_PHASE2_BATCH_ANALYSIS_READY_SUMMARY_PATH = Path(
+    "data/processed/phase2_batch_analysis_ready_summary.csv"
+)
+DEFAULT_PHASE2_BATCH_ANALYSIS_READY_AUDIT_REPORT = Path(
+    "reports/phase2_batch_analysis_ready_audit.md"
+)
+DEFAULT_OBJECT_GRAPH_EDGES_PATH = Path(
+    "data/processed/evidence_backed_object_graph_edges.csv"
+)
 PHASE2_PROMPT_VERSION = "phase2_structured_extraction_v1"
 PHASE2_RETRY_PROMPT_VERSION = "phase2_structured_extraction_retry_failed_v1"
 PHASE2_BATCH_ENDPOINT = "/v1/responses"
@@ -264,6 +279,18 @@ PHASE2_CUE_FAILURE_TYPES = {
     "extend_cue_not_accepted",
 }
 PHASE2_RETRY_FAILURE_TYPES = {"schema_error", "api_error", "missing_batch_output"}
+PHASE2_FORBIDDEN_OBJECT_NODE_NAMES = {
+    "unknown",
+    "method",
+    "model",
+    "metric",
+    "software_or_tool",
+    "dataset_or_database",
+    "benchmark_or_protocol",
+    "task",
+    "claim_or_finding",
+    "theory_or_concept",
+}
 
 PHASE2_REVIEW_SAMPLE_COLUMNS = [
     "context_id",
@@ -1568,6 +1595,440 @@ def revalidate_phase2_failed_rows(
         encoding="utf-8",
     )
     return metrics
+
+
+def finalize_phase2_batch_labels(
+    *,
+    labels_path: str | Path = DEFAULT_PHASE2_BATCH_REVALIDATED_PARQUET_PATH,
+    failed_path: str | Path = DEFAULT_PHASE2_BATCH_FAILED_AFTER_REVALIDATION_PATH,
+    failed_diagnostics_path: str | Path = DEFAULT_PHASE2_BATCH_FAILED_DIAGNOSTICS_PATH,
+    object_graph_candidates_path: str | Path = DEFAULT_PHASE1_OBJECT_GRAPH_CANDIDATES_PATH,
+    out_labels_path: str | Path = DEFAULT_PHASE2_BATCH_ANALYSIS_READY_LABELS_PATH,
+    out_excluded_path: str | Path = DEFAULT_PHASE2_BATCH_EXCLUDED_LABELS_PATH,
+    out_summary_path: str | Path = DEFAULT_PHASE2_BATCH_ANALYSIS_READY_SUMMARY_PATH,
+    report_path: str | Path = DEFAULT_PHASE2_BATCH_ANALYSIS_READY_AUDIT_REPORT,
+    stored_object_graph_edges_path: str | Path = DEFAULT_OBJECT_GRAPH_EDGES_PATH,
+    min_confidence: float = 0.7,
+) -> dict[str, Any]:
+    """Create the final analysis-ready Phase-2 Batch label table and audit."""
+    input_paths = [
+        Path(labels_path),
+        Path(failed_path),
+        Path(failed_diagnostics_path),
+        Path(object_graph_candidates_path),
+    ]
+    for path in input_paths:
+        if not path.exists():
+            raise FileNotFoundError(f"Required input does not exist: {path}")
+
+    labels = pd.read_parquet(labels_path)
+    failed_records = _read_failed_jsonl(Path(failed_path))
+    failed_diagnostics = pd.read_parquet(failed_diagnostics_path)
+    object_graph = pd.read_parquet(object_graph_candidates_path)
+
+    prepared = _annotate_phase2_analysis_ready_labels(
+        labels,
+        min_confidence=min_confidence,
+    )
+    analysis_ready = prepared.loc[prepared["analysis_ready"]].copy()
+    excluded = prepared.loc[~prepared["analysis_ready"]].copy()
+
+    analysis_ready_out = Path(out_labels_path)
+    excluded_out = Path(out_excluded_path)
+    summary_out = Path(out_summary_path)
+    report_out = Path(report_path)
+    for output_path in (analysis_ready_out, excluded_out, summary_out, report_out):
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    analysis_ready.to_parquet(analysis_ready_out, index=False)
+    excluded.to_parquet(excluded_out, index=False)
+
+    metrics = build_phase2_batch_analysis_ready_metrics(
+        labels=prepared,
+        analysis_ready=analysis_ready,
+        excluded=excluded,
+        failed_records=failed_records,
+        failed_diagnostics=failed_diagnostics,
+        object_graph=object_graph,
+        stored_object_graph_edges_path=Path(stored_object_graph_edges_path),
+    )
+    metrics["recommended_downstream_table"] = str(analysis_ready_out)
+    summary = _phase2_analysis_ready_summary(metrics)
+    summary.to_csv(summary_out, index=False)
+    report_out.write_text(
+        build_phase2_batch_analysis_ready_report(
+            metrics=metrics,
+            labels_path=Path(labels_path),
+            failed_path=Path(failed_path),
+            failed_diagnostics_path=Path(failed_diagnostics_path),
+            object_graph_candidates_path=Path(object_graph_candidates_path),
+            out_labels_path=analysis_ready_out,
+            out_excluded_path=excluded_out,
+            out_summary_path=summary_out,
+        ),
+        encoding="utf-8",
+    )
+    return metrics
+
+
+def build_phase2_batch_analysis_ready_metrics(
+    *,
+    labels: pd.DataFrame,
+    analysis_ready: pd.DataFrame,
+    excluded: pd.DataFrame,
+    failed_records: list[dict[str, Any]],
+    failed_diagnostics: pd.DataFrame,
+    object_graph: pd.DataFrame,
+    stored_object_graph_edges_path: Path,
+) -> dict[str, Any]:
+    """Compute audit metrics for final Phase-2 Batch analysis-ready labels."""
+    from citeevidence.analysis import build_evidence_backed_object_graph
+
+    remaining_failed_rows = len(failed_records)
+    total_revalidated_rows = len(labels)
+    total_requested_rows = total_revalidated_rows + remaining_failed_rows
+    _, recomputed_edges = build_evidence_backed_object_graph(analysis_ready, object_graph)
+    recomputed_nodes = _object_nodes_from_edges(recomputed_edges)
+    stored_edges = _count_csv_rows(stored_object_graph_edges_path)
+    pseudo_nodes = sorted(
+        {
+            name
+            for name in recomputed_nodes["canonical_name"].map(_clean).str.casefold().tolist()
+            if name in PHASE2_FORBIDDEN_OBJECT_NODE_NAMES
+        }
+    )
+    duplicate_labels = _duplicate_context_id_count(labels)
+    duplicate_analysis_ready = _duplicate_context_id_count(analysis_ready)
+    ungrounded_analysis_ready = _ungrounded_phase2_rows(analysis_ready)
+    remaining_failed = _ensure_columns(
+        failed_diagnostics.copy(),
+        ["revalidated", "failed_validator_type"],
+    )
+    remaining_failed = remaining_failed.loc[
+        ~remaining_failed["revalidated"].map(_bool_value)
+    ].copy()
+    return {
+        "total_batch_requested_rows": total_requested_rows,
+        "total_revalidated_rows": total_revalidated_rows,
+        "analysis_ready_rows": int(len(analysis_ready)),
+        "excluded_rows": int(len(excluded)),
+        "remaining_failed_rows": remaining_failed_rows,
+        "final_effective_success_rate": _safe_rate(len(analysis_ready), total_requested_rows),
+        "evidence_supports_label_before": _value_counts(
+            labels,
+            ["evidence_supports_label"],
+            "rows",
+        ),
+        "abstain_before": _value_counts(labels, ["abstain"], "rows"),
+        "confidence_distribution_before": _confidence_distribution(labels),
+        "confidence_distribution_after": _confidence_distribution(analysis_ready),
+        "final_intent_before": _value_counts(labels, ["final_intent"], "rows"),
+        "final_intent_after": _value_counts(analysis_ready, ["final_intent"], "rows"),
+        "final_object_type_before": _value_counts(labels, ["final_object_type"], "rows"),
+        "final_object_type_after": _value_counts(
+            analysis_ready,
+            ["final_object_type"],
+            "rows",
+        ),
+        "final_relation_subtype_before": _value_counts(
+            labels,
+            ["final_relation_subtype"],
+            "rows",
+        ),
+        "final_relation_subtype_after": _value_counts(
+            analysis_ready,
+            ["final_relation_subtype"],
+            "rows",
+        ),
+        "excluded_by_reason": _value_counts(excluded, ["exclusion_reason"], "rows"),
+        "remaining_failed_by_validator": _value_counts(
+            remaining_failed,
+            ["failed_validator_type"],
+            "rows",
+        ),
+        "duplicate_context_id_count_before": duplicate_labels,
+        "duplicate_context_id_count_after": duplicate_analysis_ready,
+        "evidence_span_not_grounded_after": int(len(ungrounded_analysis_ready)),
+        "stored_object_graph_edges": stored_edges,
+        "recomputed_object_graph_edges": int(len(recomputed_edges)),
+        "object_graph_edge_count_delta": (
+            None if stored_edges is None else int(len(recomputed_edges) - stored_edges)
+        ),
+        "pseudo_node_count": int(len(pseudo_nodes)),
+        "pseudo_nodes": pseudo_nodes,
+        "recommended_downstream_table": str(DEFAULT_PHASE2_BATCH_ANALYSIS_READY_LABELS_PATH),
+    }
+
+
+def build_phase2_batch_analysis_ready_report(
+    *,
+    metrics: dict[str, Any],
+    labels_path: Path,
+    failed_path: Path,
+    failed_diagnostics_path: Path,
+    object_graph_candidates_path: Path,
+    out_labels_path: Path,
+    out_excluded_path: Path,
+    out_summary_path: Path,
+) -> str:
+    """Build readable markdown for the Phase-2 Batch final label audit."""
+    core = pd.DataFrame(
+        [
+            {
+                "metric": "total_batch_requested_rows",
+                "value": metrics["total_batch_requested_rows"],
+            },
+            {"metric": "total_revalidated_rows", "value": metrics["total_revalidated_rows"]},
+            {"metric": "analysis_ready_rows", "value": metrics["analysis_ready_rows"]},
+            {"metric": "excluded_rows", "value": metrics["excluded_rows"]},
+            {"metric": "remaining_failed_rows", "value": metrics["remaining_failed_rows"]},
+            {
+                "metric": "final_effective_success_rate",
+                "value": f"{metrics['final_effective_success_rate']:.4f}",
+            },
+            {
+                "metric": "duplicate_context_id_count_before",
+                "value": metrics["duplicate_context_id_count_before"],
+            },
+            {
+                "metric": "duplicate_context_id_count_after",
+                "value": metrics["duplicate_context_id_count_after"],
+            },
+            {
+                "metric": "evidence_span_not_grounded_after",
+                "value": metrics["evidence_span_not_grounded_after"],
+            },
+            {
+                "metric": "stored_object_graph_edges",
+                "value": _format_optional_int(metrics["stored_object_graph_edges"]),
+            },
+            {
+                "metric": "recomputed_object_graph_edges",
+                "value": metrics["recomputed_object_graph_edges"],
+            },
+            {
+                "metric": "object_graph_edge_count_delta",
+                "value": _format_optional_int(metrics["object_graph_edge_count_delta"]),
+            },
+            {"metric": "pseudo_node_count", "value": metrics["pseudo_node_count"]},
+            {"metric": "pseudo_nodes", "value": ";".join(metrics["pseudo_nodes"])},
+        ]
+    )
+    sections = [
+        "# Phase-2 Batch Analysis-Ready Label Audit",
+        "",
+        "This report defines the final downstream-analysis table for full high+medium "
+        "Phase-2 Batch labels. Analysis-ready rows must be non-abstain, "
+        "`evidence_supports_label=true`, confidence >= 0.7, non-unclear, and grounded "
+        "by an exact evidence substring.",
+        "",
+        "## Inputs",
+        f"- Revalidated labels: `{labels_path}`",
+        f"- Remaining failed rows: `{failed_path}`",
+        f"- Failed diagnostics: `{failed_diagnostics_path}`",
+        f"- Object graph candidates: `{object_graph_candidates_path}`",
+        "",
+        "## Outputs",
+        f"- Analysis-ready labels: `{out_labels_path}`",
+        f"- Excluded labels: `{out_excluded_path}`",
+        f"- Summary CSV: `{out_summary_path}`",
+        "",
+        "## Core Metrics",
+        _table(core),
+        "",
+        "## Evidence Supports Label Before Filtering",
+        _table(metrics["evidence_supports_label_before"]),
+        "",
+        "## Abstain Before Filtering",
+        _table(metrics["abstain_before"]),
+        "",
+        "## Confidence Distribution Before Filtering",
+        _table(metrics["confidence_distribution_before"]),
+        "",
+        "## Confidence Distribution After Filtering",
+        _table(metrics["confidence_distribution_after"]),
+        "",
+        "## Final Intent Before Filtering",
+        _table(metrics["final_intent_before"]),
+        "",
+        "## Final Intent After Filtering",
+        _table(metrics["final_intent_after"]),
+        "",
+        "## Final Object Type Before Filtering",
+        _table(metrics["final_object_type_before"]),
+        "",
+        "## Final Object Type After Filtering",
+        _table(metrics["final_object_type_after"]),
+        "",
+        "## Final Relation Subtype Before Filtering",
+        _table(metrics["final_relation_subtype_before"]),
+        "",
+        "## Final Relation Subtype After Filtering",
+        _table(metrics["final_relation_subtype_after"]),
+        "",
+        "## Excluded Rows By Reason",
+        _table(metrics["excluded_by_reason"]),
+        "",
+        "## Remaining Failed Rows By Validator Failure Category",
+        _table(metrics["remaining_failed_by_validator"]),
+        "",
+        "## Final Recommended Downstream Table",
+        f"`{out_labels_path}`",
+        "",
+    ]
+    return "\n".join(sections)
+
+
+def _annotate_phase2_analysis_ready_labels(
+    labels: pd.DataFrame,
+    *,
+    min_confidence: float,
+) -> pd.DataFrame:
+    frame = _ensure_columns(
+        labels.copy(),
+        [
+            "context_id",
+            "evidence_supports_label",
+            "abstain",
+            "phase2_confidence",
+            "confidence",
+            "evidence_span_phase2",
+            "evidence_span",
+            "sentence_text",
+            "context_window_s3",
+            "final_intent",
+        ],
+    )
+    frame["analysis_evidence_span"] = frame.apply(_phase2_analysis_evidence_span, axis=1)
+    frame["analysis_confidence"] = frame.apply(_phase2_analysis_confidence, axis=1)
+    frame["evidence_span_grounded"] = frame.apply(
+        lambda row: _phase2_evidence_span_grounded(row, "analysis_evidence_span"),
+        axis=1,
+    )
+    frame["exclusion_reason"] = frame.apply(
+        lambda row: _phase2_analysis_exclusion_reason(
+            row,
+            min_confidence=min_confidence,
+        ),
+        axis=1,
+    )
+    frame["analysis_ready"] = frame["exclusion_reason"].map(_clean).eq("")
+    return frame
+
+
+def _phase2_analysis_exclusion_reason(row: pd.Series, *, min_confidence: float) -> str:
+    support = _clean(row.get("evidence_supports_label")).casefold()
+    if support == "false":
+        return "evidence_supports_label_false"
+    if support == "unclear":
+        return "evidence_supports_label_unclear"
+    if support != "true":
+        return "other"
+    if _bool_value(row.get("abstain")):
+        return "abstain_true"
+    if _phase2_analysis_confidence(row) < min_confidence:
+        return "low_confidence"
+    if not _clean(row.get("analysis_evidence_span")):
+        return "missing_evidence_span"
+    if _clean(row.get("final_intent")).casefold() == "unclear":
+        return "final_intent_unclear"
+    if not _bool_value(row.get("evidence_span_grounded")):
+        return "evidence_span_not_grounded"
+    return ""
+
+
+def _phase2_analysis_evidence_span(row: pd.Series) -> str:
+    phase2_span = _clean(row.get("evidence_span_phase2"))
+    return phase2_span or _clean(row.get("evidence_span"))
+
+
+def _phase2_analysis_confidence(row: pd.Series) -> float:
+    phase2_confidence = pd.to_numeric(row.get("phase2_confidence"), errors="coerce")
+    if not pd.isna(phase2_confidence):
+        return float(phase2_confidence)
+    fallback = pd.to_numeric(row.get("confidence"), errors="coerce")
+    return 0.0 if pd.isna(fallback) else float(fallback)
+
+
+def _phase2_evidence_span_grounded(row: pd.Series, evidence_column: str) -> bool:
+    evidence = _clean(row.get(evidence_column))
+    if not evidence:
+        return False
+    sentence = _clean(row.get("sentence_text"))
+    context = _clean(row.get("context_window_s3"))
+    return evidence in sentence or evidence in context
+
+
+def _phase2_analysis_ready_summary(metrics: dict[str, Any]) -> pd.DataFrame:
+    rows = [
+        ("total_batch_requested_rows", metrics["total_batch_requested_rows"]),
+        ("total_revalidated_rows", metrics["total_revalidated_rows"]),
+        ("analysis_ready_rows", metrics["analysis_ready_rows"]),
+        ("excluded_rows", metrics["excluded_rows"]),
+        ("remaining_failed_rows", metrics["remaining_failed_rows"]),
+        (
+            "final_effective_success_rate",
+            f"{metrics['final_effective_success_rate']:.6f}",
+        ),
+        ("duplicate_context_id_count_before", metrics["duplicate_context_id_count_before"]),
+        ("duplicate_context_id_count_after", metrics["duplicate_context_id_count_after"]),
+        ("evidence_span_not_grounded_after", metrics["evidence_span_not_grounded_after"]),
+        ("stored_object_graph_edges", _format_optional_int(metrics["stored_object_graph_edges"])),
+        ("recomputed_object_graph_edges", metrics["recomputed_object_graph_edges"]),
+        (
+            "object_graph_edge_count_delta",
+            _format_optional_int(metrics["object_graph_edge_count_delta"]),
+        ),
+        ("pseudo_node_count", metrics["pseudo_node_count"]),
+        ("pseudo_nodes", ";".join(metrics["pseudo_nodes"])),
+        ("recommended_downstream_table", metrics["recommended_downstream_table"]),
+    ]
+    return pd.DataFrame(rows, columns=["metric", "value"])
+
+
+def _object_nodes_from_edges(edges: pd.DataFrame) -> pd.DataFrame:
+    if edges.empty:
+        return pd.DataFrame(columns=["canonical_name", "object_type", "rows"])
+    return (
+        edges.groupby(["canonical_name", "object_type"], dropna=False)
+        .size()
+        .reset_index(name="rows")
+    )
+
+
+def _duplicate_context_id_count(frame: pd.DataFrame) -> int:
+    if frame.empty or "context_id" not in frame:
+        return 0
+    context_ids = frame["context_id"].map(_clean)
+    return int(context_ids.duplicated(keep=False).sum())
+
+
+def _ungrounded_phase2_rows(frame: pd.DataFrame) -> pd.DataFrame:
+    if frame.empty:
+        return frame.copy()
+    checked = _ensure_columns(
+        frame.copy(),
+        ["analysis_evidence_span", "sentence_text", "context_window_s3"],
+    )
+    grounded = checked.apply(
+        lambda row: _phase2_evidence_span_grounded(row, "analysis_evidence_span"),
+        axis=1,
+    )
+    return checked.loc[~grounded].copy()
+
+
+def _count_csv_rows(path: Path) -> int | None:
+    if not path.exists():
+        return None
+    with path.open("r", encoding="utf-8", errors="ignore") as handle:
+        line_count = sum(1 for _ in handle)
+    return max(0, line_count - 1)
+
+
+def _format_optional_int(value: Any) -> str:
+    if value is None or pd.isna(value):
+        return "unavailable"
+    return str(int(value))
 
 
 def build_phase2_input_queue(

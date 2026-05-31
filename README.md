@@ -22,13 +22,17 @@ Active course MVP pipeline. Implemented pieces include:
 - object matching LLM-as-judge audit and review-policy application
 - full Phase-1 citation-function screening and LLM queue construction
 - Phase-1 LLM-as-judge audit
-- Phase-2 LLM structured evidence extraction pilot
+- Phase-2 LLM structured evidence extraction pilot and full high+medium Batch run
 - Phase-2 failed-row diagnostics and conservative local revalidation
-- Phase-2 pilot analysis report, case-study tables, and reproducible figures
+- final Phase-2 Batch analysis-ready label audit
+- Phase-2 analysis reports, case-study tables, and reproducible figures
 - SciSci-style full-data candidate analysis over the full Phase-1/object-match outputs
 - evidence-backed object-use mini graph from strict Phase-2 labels
 
-The current Phase-2 pilot has 582 valid model-assisted structured evidence labels and 18 remaining failed rows after revalidation. Phase-2 labels are evidence-grounded, schema-validated LLM-assisted labels; they are not human gold annotations.
+The current full high+medium Phase-2 Batch run processed 306,231 requests. After local
+revalidation and final analysis-ready filtering, the downstream table contains 229,751
+non-abstain, evidence-supported, grounded labels. Phase-2 labels are schema-validated
+LLM-assisted labels; they are not human gold annotations.
 
 Not yet complete:
 
@@ -240,6 +244,20 @@ citeevidence phase2 revalidate-batch-failed \
   --retry-manifest data/batch/phase2_retry_batch_manifest.json
 ```
 
+Finalize the full Batch labels for downstream analysis:
+
+```bash
+citeevidence phase2 finalize-batch-labels \
+  --labels data/processed/phase2_structured_labels_batch_revalidated.parquet \
+  --failed data/processed/phase2_structured_labels_batch_failed_after_revalidation.jsonl \
+  --failed-diagnostics data/processed/phase2_batch_failed_validation_diagnostics.parquet \
+  --object-graph-candidates data/processed/object_graph_candidate_mentions.parquet \
+  --out-labels data/processed/phase2_batch_analysis_ready_labels.parquet \
+  --out-excluded data/processed/phase2_batch_excluded_labels.parquet \
+  --out-summary data/processed/phase2_batch_analysis_ready_summary.csv \
+  --report reports/phase2_batch_analysis_ready_audit.md
+```
+
 Before committing after any API work, run a local secret scan over staged text files:
 
 ```bash
@@ -285,7 +303,7 @@ citeevidence analysis scisci-full \
   --object-mentions data/processed/object_mentions.parquet \
   --object-graph-candidates data/processed/object_graph_candidate_mentions.parquet \
   --phase1 data/processed/phase1_citation_function_candidates.parquet \
-  --phase2 data/processed/phase2_structured_labels_batch_revalidated.parquet \
+  --phase2 data/processed/phase2_batch_analysis_ready_labels.parquet \
   --out-report reports/scisci_full_data_analysis_report.md \
   --figures-dir figures \
   --source-data-dir figures/source_data
@@ -295,7 +313,7 @@ Build the strict evidence-backed object-use mini graph:
 
 ```bash
 citeevidence analysis object-graph \
-  --phase2 data/processed/phase2_structured_labels_batch_revalidated.parquet \
+  --phase2 data/processed/phase2_batch_analysis_ready_labels.parquet \
   --object-graph-candidates data/processed/object_graph_candidate_mentions.parquet \
   --object-mentions data/processed/object_mentions.parquet \
   --phase1 data/processed/phase1_citation_function_candidates.parquet \
@@ -316,9 +334,13 @@ citeevidence analysis object-graph \
 - `data/processed/phase1_llm_queue_sample.parquet`
 - `data/processed/phase2_structured_labels_pilot_revalidated.parquet`
 - `data/processed/phase2_structured_labels_batch_revalidated.parquet`
+- `data/processed/phase2_batch_analysis_ready_labels.parquet`
+- `data/processed/phase2_batch_excluded_labels.parquet`
+- `data/processed/phase2_batch_analysis_ready_summary.csv`
 - `data/processed/phase2_batch_failed_validation_diagnostics.parquet`
 - `reports/phase2_structured_extraction_pilot_revalidated_report.md`
 - `reports/phase2_batch_revalidated_report.md`
+- `reports/phase2_batch_analysis_ready_audit.md`
 - `reports/phase2_pilot_analysis_report.md`
 - `reports/scisci_full_data_analysis_report.md`
 - `reports/evidence_backed_object_graph_report.md`

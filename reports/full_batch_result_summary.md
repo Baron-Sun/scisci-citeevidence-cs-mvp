@@ -55,7 +55,7 @@ consistency before accepting a non-abstain label.
 | metric | value |
 |:--|--:|
 | processed rows | 306,231 |
-| valid evidence-grounded Phase-2 labels | 236,755 |
+| locally accepted Phase-2 rows before revalidation | 236,755 |
 | local failed rows | 69,476 |
 | local validation success rate | 77.31% |
 | local validation failure rate | 22.69% |
@@ -163,40 +163,74 @@ Outputs:
 - `reports/phase2_batch_failed_validation_diagnostics.md`
 - `reports/phase2_batch_revalidated_report.md`
 
+## Final Analysis-Ready Phase-2 Labels
+
+Task 10C.1 defines the final downstream-analysis table. It filters the 237,697
+revalidated rows to non-abstain, evidence-supported, confidence >= 0.7, non-unclear
+labels whose evidence span is an exact substring of the citation sentence or context
+window.
+
+| metric | value |
+|:--|--:|
+| total Batch requested rows | 306,231 |
+| revalidated rows | 237,697 |
+| analysis-ready rows | 229,751 |
+| excluded revalidated rows | 7,946 |
+| remaining failed rows | 68,534 |
+| final effective success rate | 75.03% |
+| duplicate context_id after filtering | 0 |
+| ungrounded evidence spans after filtering | 0 |
+
+Excluded rows by reason:
+
+| exclusion reason | rows |
+|:--|--:|
+| low_confidence | 6,317 |
+| evidence_supports_label_false | 1,094 |
+| evidence_supports_label_unclear | 476 |
+| final_intent_unclear | 31 |
+| abstain_true | 28 |
+
+Final downstream table:
+
+- `data/processed/phase2_batch_analysis_ready_labels.parquet`
+- `data/processed/phase2_batch_excluded_labels.parquet`
+- `reports/phase2_batch_analysis_ready_audit.md`
+
 ## Updated Full Evidence-Backed Object Graph
 
-After replacing the 582-row pilot labels with the full revalidated Batch labels, the strict
+After replacing the 582-row pilot labels with the final analysis-ready Batch labels, the strict
 object graph expanded substantially:
 
-| metric | pilot after pseudo-node fix | full Batch revalidated labels |
+| metric | pilot after pseudo-node fix | full Batch analysis-ready labels |
 |:--|--:|--:|
 | strict object nodes | 30 | 33 |
-| strict object edges | 345 | 193,329 |
+| strict object edges | 345 | 193,287 |
 | pseudo nodes | 0 | 0 |
 
 Top strict evidence-backed object nodes:
 
 | object | type | evidence-backed edges |
 |:--|:--|--:|
-| BERT | model | 27,386 |
-| LSTM | model | 18,202 |
-| BLEU | metric | 16,005 |
-| Transformer | model | 14,139 |
-| CRF | method | 12,734 |
-| WordNet | dataset_or_database | 12,087 |
+| BERT | model | 27,380 |
+| LSTM | model | 18,200 |
+| BLEU | metric | 15,991 |
+| Transformer | model | 14,137 |
+| CRF | method | 12,733 |
+| WordNet | dataset_or_database | 12,086 |
 | seq2seq | model | 8,669 |
 | attention mechanism | method | 8,513 |
 | SemEval | benchmark_or_protocol | 8,306 |
-| HMM | method | 5,913 |
+| HMM | method | 5,912 |
 
-The full edge CSV is large (`141MB`) and is kept as a local audit artifact. Reports,
-figures, source data, node tables, and evidence cards are regenerated from the full
-Batch-valid labels.
+The full edge CSV is large and is kept as a local audit artifact. Reports,
+figures, source data, node tables, and evidence cards are regenerated from the final
+analysis-ready labels.
 
 ## Interpretation
 
 The project has moved from a 582-label pilot to a large evidence-backed Phase-2
-dataset with 237,697 locally validated structured labels after revalidation. The difference matters:
+dataset with 229,751 final analysis-ready labels. The difference matters:
 the previous figures were a prototype over a small validated sample, while the current
 figures are grounded in the full high+medium LLM candidate set after strict local
 evidence validation.
@@ -206,5 +240,6 @@ are rejecting labels whose evidence span, quote fields, or intent cues do not sa
 the project rules. For a course paper, the cleanest claim is:
 
 > We generated 306,231 model-assisted structured citation-function responses through
-> Batch API and retained 237,697 evidence-grounded Phase-2 labels after exact-span,
-> local policy validation, and conservative failed-row revalidation.
+> Batch API and retained 229,751 analysis-ready Phase-2 labels after exact-span,
+> local policy validation, conservative failed-row revalidation, and final
+> evidence-supported filtering.

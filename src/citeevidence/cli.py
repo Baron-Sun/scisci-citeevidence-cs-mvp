@@ -163,7 +163,11 @@ from citeevidence.phase1_llm_review import (
     run_phase1_llm_review,
 )
 from citeevidence.phase2 import (
+    DEFAULT_PHASE2_BATCH_ANALYSIS_READY_AUDIT_REPORT,
+    DEFAULT_PHASE2_BATCH_ANALYSIS_READY_LABELS_PATH,
+    DEFAULT_PHASE2_BATCH_ANALYSIS_READY_SUMMARY_PATH,
     DEFAULT_PHASE2_BATCH_COST_REPORT,
+    DEFAULT_PHASE2_BATCH_EXCLUDED_LABELS_PATH,
     DEFAULT_PHASE2_BATCH_FAILED_AFTER_REVALIDATION_PATH,
     DEFAULT_PHASE2_BATCH_FAILED_DIAGNOSTICS_PATH,
     DEFAULT_PHASE2_BATCH_FAILED_DIAGNOSTICS_REPORT,
@@ -192,6 +196,7 @@ from citeevidence.phase2 import (
     check_phase2_batch_status,
     collect_phase2_batch_results,
     estimate_phase2_batch_cost,
+    finalize_phase2_batch_labels,
     prepare_phase2_batch_requests,
     revalidate_phase2_failed_rows,
     run_phase2_structured_extraction,
@@ -2018,6 +2023,65 @@ def revalidate_phase2_batch_failed(
         f"retry_rows={metrics.get('retry_manifest', {}).get('total_rows', 0)}. "
         f"Wrote {out_labels}, {out_failed}, {diagnostics}, "
         f"{diagnostics_report}, {report}, and {retry_manifest}."
+    )
+
+
+@phase2_app.command("finalize-batch-labels")
+def finalize_phase2_batch_labels_command(
+    labels: Annotated[
+        Path,
+        typer.Option("--labels", help="Path to revalidated full Batch labels parquet."),
+    ] = DEFAULT_PHASE2_BATCH_REVALIDATED_PARQUET_PATH,
+    failed: Annotated[
+        Path,
+        typer.Option("--failed", help="Path to remaining failed full Batch JSONL."),
+    ] = DEFAULT_PHASE2_BATCH_FAILED_AFTER_REVALIDATION_PATH,
+    failed_diagnostics: Annotated[
+        Path,
+        typer.Option("--failed-diagnostics", help="Path to full Batch diagnostics parquet."),
+    ] = DEFAULT_PHASE2_BATCH_FAILED_DIAGNOSTICS_PATH,
+    object_graph_candidates: Annotated[
+        Path,
+        typer.Option("--object-graph-candidates", help="Path to object graph candidates parquet."),
+    ] = DEFAULT_PHASE1_OBJECT_GRAPH_CANDIDATES_PATH,
+    out_labels: Annotated[
+        Path,
+        typer.Option("--out-labels", help="Output analysis-ready labels parquet."),
+    ] = DEFAULT_PHASE2_BATCH_ANALYSIS_READY_LABELS_PATH,
+    out_excluded: Annotated[
+        Path,
+        typer.Option("--out-excluded", help="Output excluded labels parquet."),
+    ] = DEFAULT_PHASE2_BATCH_EXCLUDED_LABELS_PATH,
+    out_summary: Annotated[
+        Path,
+        typer.Option("--out-summary", help="Output summary CSV."),
+    ] = DEFAULT_PHASE2_BATCH_ANALYSIS_READY_SUMMARY_PATH,
+    report: Annotated[
+        Path,
+        typer.Option("--report", help="Output analysis-ready audit markdown report."),
+    ] = DEFAULT_PHASE2_BATCH_ANALYSIS_READY_AUDIT_REPORT,
+) -> None:
+    """Create the final analysis-ready Phase-2 Batch label table."""
+    try:
+        metrics = finalize_phase2_batch_labels(
+            labels_path=labels,
+            failed_path=failed,
+            failed_diagnostics_path=failed_diagnostics,
+            object_graph_candidates_path=object_graph_candidates,
+            out_labels_path=out_labels,
+            out_excluded_path=out_excluded,
+            out_summary_path=out_summary,
+            report_path=report,
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        error_console.print(f"[red]Failed to finalize Phase-2 Batch labels:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    console.print(
+        f"Finalized {metrics['analysis_ready_rows']} analysis-ready labels "
+        f"from {metrics['total_revalidated_rows']} revalidated rows; "
+        f"effective_success_rate={metrics['final_effective_success_rate']:.3f}. "
+        f"Wrote {out_labels}, {out_excluded}, {out_summary}, and {report}."
     )
 
 

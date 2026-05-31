@@ -6,7 +6,7 @@ This is a course-scale object-use graph inspired by evidence-grounded methodolog
 | metric               |   value |
 |:---------------------|--------:|
 | strict_object_nodes  |      33 |
-| strict_object_edges  |  193329 |
+| strict_object_edges  |  193287 |
 | evidence_cards       |      30 |
 | full_object_mentions |  404228 |
 | broad_phase1_objects |      33 |
@@ -14,36 +14,36 @@ This is a course-scale object-use graph inspired by evidence-grounded methodolog
 ## Top Strict Evidence-Backed Object Nodes
 | canonical_name      | object_type           |   evidence_backed_edge_count |   distinct_contexts |   mean_confidence |
 |:--------------------|:----------------------|-----------------------------:|--------------------:|------------------:|
-| BERT                | model                 |                        27386 |               27386 |          0.888096 |
-| LSTM                | model                 |                        18202 |               18202 |          0.887259 |
-| BLEU                | metric                |                        16005 |               16005 |          0.897861 |
-| Transformer         | model                 |                        14139 |               14139 |          0.88244  |
-| CRF                 | method                |                        12734 |               12734 |          0.88836  |
-| WordNet             | dataset_or_database   |                        12087 |               12087 |          0.864276 |
+| BERT                | model                 |                        27380 |               27380 |          0.888125 |
+| LSTM                | model                 |                        18200 |               18200 |          0.887274 |
+| BLEU                | metric                |                        15991 |               15991 |          0.897939 |
+| Transformer         | model                 |                        14137 |               14137 |          0.882447 |
+| CRF                 | method                |                        12733 |               12733 |          0.888371 |
+| WordNet             | dataset_or_database   |                        12086 |               12086 |          0.864287 |
 | seq2seq             | model                 |                         8669 |                8669 |          0.889499 |
 | attention mechanism | method                |                         8513 |                8513 |          0.878427 |
 | SemEval             | benchmark_or_protocol |                         8306 |                8306 |          0.886713 |
-| HMM                 | method                |                         5913 |                5913 |          0.888057 |
+| HMM                 | method                |                         5912 |                5912 |          0.888082 |
 | GloVe               | model                 |                         5865 |                5865 |          0.911023 |
 | Penn Treebank       | dataset_or_database   |                         5820 |                5820 |          0.878562 |
-| ROUGE               | metric                |                         5787 |                5787 |          0.902514 |
-| word2vec            | model                 |                         4695 |                4695 |          0.890313 |
+| ROUGE               | metric                |                         5785 |                5785 |          0.902562 |
+| word2vec            | model                 |                         4694 |                4694 |          0.890328 |
 | ELMo                | model                 |                         4254 |                4254 |          0.893427 |
 | Moses               | software_or_tool      |                         3767 |                3767 |          0.915875 |
 | FrameNet            | dataset_or_database   |                         3710 |                3710 |          0.873574 |
-| METEOR              | metric                |                         3688 |                3688 |          0.909732 |
-| SQuAD               | dataset_or_database   |                         3439 |                3439 |          0.890535 |
-| WMT                 | benchmark_or_protocol |                         3345 |                3345 |          0.883214 |
+| METEOR              | metric                |                         3684 |                3684 |          0.909859 |
+| SQuAD               | dataset_or_database   |                         3438 |                3438 |          0.890532 |
+| WMT                 | benchmark_or_protocol |                         3343 |                3343 |          0.883299 |
 | PropBank            | dataset_or_database   |                         2944 |                2944 |          0.872959 |
-| GIZA++              | software_or_tool      |                         2660 |                2660 |          0.902673 |
+| GIZA++              | software_or_tool      |                         2658 |                2658 |          0.902731 |
 | SNLI                | dataset_or_database   |                         2461 |                2461 |          0.87976  |
-| OntoNotes           | dataset_or_database   |                         1982 |                1982 |          0.888093 |
+| OntoNotes           | dataset_or_database   |                         1981 |                1981 |          0.888102 |
 | GLUE                | benchmark_or_protocol |                         1733 |                1733 |          0.884005 |
 | Stanford CoreNLP    | software_or_tool      |                         1069 |                1069 |          0.920533 |
 | CoNLL-2003          | benchmark_or_protocol |                          830 |                 830 |          0.886145 |
 | MultiNLI            | dataset_or_database   |                          780 |                 780 |          0.88441  |
-| OPUS                | software_or_tool      |                          681 |                 681 |          0.893833 |
-| CoNLL-2012          | benchmark_or_protocol |                          600 |                 600 |          0.886217 |
+| OPUS                | software_or_tool      |                          680 |                 680 |          0.893882 |
+| CoNLL-2012          | benchmark_or_protocol |                          599 |                 599 |          0.886477 |
 | NLTK                | software_or_tool      |                          597 |                 597 |          0.913869 |
 | spaCy               | software_or_tool      |                          413 |                 413 |          0.902833 |
 | SuperGLUE           | benchmark_or_protocol |                          255 |                 255 |          0.871961 |
@@ -172,8 +172,8 @@ This is a course-scale object-use graph inspired by evidence-grounded methodolog
 | CoNLL-2003       | benchmark_or_protocol | compares_against |     62 |
 | WMT              | benchmark_or_protocol | extends          |     56 |
 | CoNLL-2012       | benchmark_or_protocol | compares_against |     45 |
-| ROUGE            | metric                | extends          |     38 |
 | BLEU             | metric                | applies          |     38 |
+| ROUGE            | metric                | extends          |     38 |
 | SQuAD            | dataset_or_database   | extends          |     34 |
 | METEOR           | metric                | extends          |     30 |
 | SQuAD            | dataset_or_database   | critiques        |     29 |
@@ -182,22 +182,20 @@ This is a course-scale object-use graph inspired by evidence-grounded methodolog
 | SemEval          | benchmark_or_protocol | applies          |     15 |
 | SuperGLUE        | benchmark_or_protocol | uses             |     15 |
 | SQuAD            | dataset_or_database   | applies          |     14 |
-| BLEU             | metric                | unclear          |     14 |
 | WMT              | benchmark_or_protocol | critiques        |     14 |
-| CoNLL-2012       | benchmark_or_protocol | extends          |     10 |
 | SuperGLUE        | benchmark_or_protocol | compares_against |     10 |
+| CoNLL-2012       | benchmark_or_protocol | extends          |     10 |
 | GLUE             | benchmark_or_protocol | critiques        |      8 |
-| CoNLL-2003       | benchmark_or_protocol | extends          |      7 |
 | WMT              | benchmark_or_protocol | applies          |      7 |
+| CoNLL-2003       | benchmark_or_protocol | extends          |      7 |
 | ROUGE            | metric                | applies          |      7 |
 | CoNLL-2012       | benchmark_or_protocol | applies          |      5 |
 | METEOR           | metric                | applies          |      5 |
-| METEOR           | metric                | unclear          |      4 |
 | GLUE             | benchmark_or_protocol | applies          |      3 |
-| ROUGE            | metric                | unclear          |      2 |
 | CoNLL-2003       | benchmark_or_protocol | applies          |      2 |
-| WMT              | benchmark_or_protocol | unclear          |      2 |
 | CoNLL-2012       | benchmark_or_protocol | critiques        |      1 |
+| SuperGLUE        | benchmark_or_protocol | critiques        |      1 |
+| SuperGLUE        | benchmark_or_protocol | extends          |      1 |
 
 ## Evidence Cards
 | context_id                | final_intent     | object_name         | object_type           | cited_title                                                                                           | citation_sentence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | evidence_span                                                                                                                                                                                                                                                                                                                                                                                                      | relation_subtype    | method_edge_type   | why_interesting                                                                                                                                                                                          |
