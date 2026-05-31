@@ -1,0 +1,31 @@
+canonical_name,object_type,applies,background,compares_against,critiques,extends,unclear,uses,total
+BERT,model,135,21015,2483,478,85,19082,3892,47170
+LSTM,model,77,17475,2043,162,100,12437,2360,34654
+BLEU,metric,47,9794,1510,352,45,12576,2984,27308
+CRF,method,48,14924,921,98,45,6221,1267,23524
+Transformer,model,57,12602,1018,145,50,7590,1587,23049
+WordNet,dataset_or_database,27,10929,361,155,18,5981,792,18263
+seq2seq,model,19,9214,503,107,25,3054,534,13456
+SemEval,benchmark_or_protocol,20,7391,317,28,24,3738,877,12395
+attention mechanism,method,16,7879,389,82,40,3188,426,12020
+ROUGE,metric,14,4073,431,161,13,4258,1351,10301
+GloVe,model,29,3027,415,32,21,4918,1852,10294
+HMM,method,10,6426,303,108,8,2830,411,10096
+Penn Treebank,dataset_or_database,49,4754,167,60,9,3366,1036,9441
+word2vec,model,22,3525,270,25,10,2815,694,7361
+Moses,software_or_tool,38,1377,349,15,13,3585,1407,6784
+ELMo,model,27,3120,289,66,13,2670,501,6686
+METEOR,metric,8,2247,279,73,7,2265,645,5524
+SQuAD,dataset_or_database,18,2333,205,46,11,2272,618,5503
+WMT,benchmark_or_protocol,13,2257,265,8,10,2189,676,5418
+FrameNet,dataset_or_database,12,3459,43,18,9,1455,165,5161
+GIZA++,software_or_tool,25,1352,226,27,9,2593,781,5013
+PropBank,dataset_or_database,6,2423,55,16,2,1341,183,4026
+SNLI,dataset_or_database,11,1594,97,23,3,1832,347,3907
+OntoNotes,dataset_or_database,6,1450,86,26,4,1126,367,3065
+GLUE,benchmark_or_protocol,2,1196,102,9,9,1398,335,3051
+Stanford CoreNLP,software_or_tool,25,287,25,4,4,1201,480,2026
+CoNLL-2003,benchmark_or_protocol,2,568,43,0,1,453,176,1243
+NLTK,software_or_tool,6,206,44,4,1,702,265,1228
+MultiNLI,dataset_or_database,2,471,38,3,1,580,117,1212
+OPUS,software_or_tool,6,230,22,5,1,680,263,1207

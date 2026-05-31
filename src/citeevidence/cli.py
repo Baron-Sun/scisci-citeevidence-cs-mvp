@@ -46,6 +46,10 @@ from citeevidence.acl.section_normalization import (
     normalize_sectioned_sections,
 )
 from citeevidence.analysis import (
+    DEFAULT_EVIDENCE_CARDS,
+    DEFAULT_OBJECT_GRAPH_EDGES,
+    DEFAULT_OBJECT_GRAPH_NODES,
+    DEFAULT_OBJECT_GRAPH_REPORT,
     DEFAULT_PHASE2_ANALYSIS_REPORT,
     DEFAULT_PHASE2_ANALYSIS_SUMMARY,
     DEFAULT_PHASE2_CASE_STUDIES,
@@ -53,7 +57,10 @@ from citeevidence.analysis import (
     DEFAULT_PHASE2_FIGURES_DIR,
     DEFAULT_PHASE2_QUEUE_PATH,
     DEFAULT_PHASE2_SOURCE_DATA_DIR,
+    DEFAULT_SCISCI_FULL_REPORT,
+    run_object_graph_analysis,
     run_phase2_pilot_analysis,
+    run_scisci_full_analysis,
 )
 from citeevidence.config import ConfigLoadError, load_project_config
 from citeevidence.contexts.audit import DEFAULT_CONTEXT_FLAGS_PATH, audit_citation_contexts
@@ -316,6 +323,157 @@ def analyze_phase2_pilot(
         f"figures={metrics['figure_count']}. "
         f"Wrote {out_report}, {out_summary}, {out_case_studies}, {out_confusion}, "
         f"{figures_dir}, and {source_data_dir}."
+    )
+
+
+@analysis_app.command("scisci-full")
+def analyze_scisci_full(
+    contexts: Annotated[
+        Path,
+        typer.Option("--contexts", help="Analysis-ready strong contexts parquet."),
+    ] = DEFAULT_ANALYSIS_READY_STRONG_CONTEXTS_PATH,
+    object_mentions: Annotated[
+        Path,
+        typer.Option("--object-mentions", help="Full object mentions parquet."),
+    ] = DEFAULT_OBJECT_MENTIONS_PATH,
+    object_graph_candidates: Annotated[
+        Path,
+        typer.Option("--object-graph-candidates", help="Object graph candidate parquet."),
+    ] = DEFAULT_FULL_OBJECT_GRAPH_CANDIDATES_PATH,
+    phase1: Annotated[
+        Path,
+        typer.Option("--phase1", help="Full Phase-1 citation-function candidates parquet."),
+    ] = DEFAULT_PHASE1_CANDIDATES_FULL_PATH,
+    phase2: Annotated[
+        Path,
+        typer.Option("--phase2", help="Revalidated Phase-2 pilot labels parquet."),
+    ] = DEFAULT_PHASE2_REVALIDATED_PARQUET_PATH,
+    strict_object_graph_candidates: Annotated[
+        Path | None,
+        typer.Option("--strict-object-graph-candidates", help="Strict object graph parquet."),
+    ] = DEFAULT_STRICT_OBJECT_GRAPH_CANDIDATES_PATH,
+    broad_object_graph_candidates: Annotated[
+        Path | None,
+        typer.Option("--broad-object-graph-candidates", help="Broad object graph parquet."),
+    ] = DEFAULT_BROAD_OBJECT_GRAPH_CANDIDATES_PATH,
+    cited_title_profiles: Annotated[
+        Path | None,
+        typer.Option("--cited-title-profiles", help="Cited-title object profile parquet."),
+    ] = DEFAULT_CITED_TITLE_OBJECT_PROFILES_PATH,
+    phase1_features: Annotated[
+        Path | None,
+        typer.Option("--phase1-features", help="Full Phase-1 context features parquet."),
+    ] = DEFAULT_PHASE1_FEATURES_FULL_PATH,
+    failed_diagnostics: Annotated[
+        Path | None,
+        typer.Option("--failed-diagnostics", help="Phase-2 failed diagnostics parquet."),
+    ] = DEFAULT_PHASE2_FAILED_DIAGNOSTICS_PATH,
+    out_report: Annotated[
+        Path,
+        typer.Option("--out-report", help="Output SciSci full-data markdown report."),
+    ] = DEFAULT_SCISCI_FULL_REPORT,
+    figures_dir: Annotated[
+        Path,
+        typer.Option("--figures-dir", help="Output directory for full-data figures."),
+    ] = DEFAULT_PHASE2_FIGURES_DIR,
+    source_data_dir: Annotated[
+        Path,
+        typer.Option("--source-data-dir", help="Output directory for figure source CSVs."),
+    ] = DEFAULT_PHASE2_SOURCE_DATA_DIR,
+) -> None:
+    """Run deterministic SciSci-style full-data analysis."""
+    try:
+        metrics = run_scisci_full_analysis(
+            contexts_path=contexts,
+            object_mentions_path=object_mentions,
+            object_graph_candidates_path=object_graph_candidates,
+            phase1_path=phase1,
+            phase2_path=phase2,
+            out_report_path=out_report,
+            figures_dir=figures_dir,
+            source_data_dir=source_data_dir,
+            strict_object_graph_candidates_path=strict_object_graph_candidates,
+            broad_object_graph_candidates_path=broad_object_graph_candidates,
+            cited_title_profiles_path=cited_title_profiles,
+            phase1_features_path=phase1_features,
+            failed_diagnostics_path=failed_diagnostics,
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        error_console.print(f"[red]Failed to run SciSci full analysis:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    console.print(
+        f"Analyzed {metrics['analysis_ready_strong_contexts']} strong contexts; "
+        f"Phase-1 rows={metrics['phase1_rows']}; Phase-2 rows={metrics['phase2_rows']}; "
+        f"figures={metrics['figure_count']}. Wrote {out_report}."
+    )
+
+
+@analysis_app.command("object-graph")
+def analyze_object_graph(
+    phase2: Annotated[
+        Path,
+        typer.Option("--phase2", help="Revalidated Phase-2 pilot labels parquet."),
+    ] = DEFAULT_PHASE2_REVALIDATED_PARQUET_PATH,
+    object_graph_candidates: Annotated[
+        Path,
+        typer.Option("--object-graph-candidates", help="Object graph candidate parquet."),
+    ] = DEFAULT_FULL_OBJECT_GRAPH_CANDIDATES_PATH,
+    object_mentions: Annotated[
+        Path,
+        typer.Option("--object-mentions", help="Full object mentions parquet."),
+    ] = DEFAULT_OBJECT_MENTIONS_PATH,
+    phase1: Annotated[
+        Path,
+        typer.Option("--phase1", help="Full Phase-1 citation-function candidates parquet."),
+    ] = DEFAULT_PHASE1_CANDIDATES_FULL_PATH,
+    out_nodes: Annotated[
+        Path,
+        typer.Option("--out-nodes", help="Output evidence-backed object graph nodes CSV."),
+    ] = DEFAULT_OBJECT_GRAPH_NODES,
+    out_edges: Annotated[
+        Path,
+        typer.Option("--out-edges", help="Output evidence-backed object graph edges CSV."),
+    ] = DEFAULT_OBJECT_GRAPH_EDGES,
+    out_cards: Annotated[
+        Path,
+        typer.Option("--out-cards", help="Output report-ready evidence cards CSV."),
+    ] = DEFAULT_EVIDENCE_CARDS,
+    out_report: Annotated[
+        Path,
+        typer.Option("--out-report", help="Output object graph markdown report."),
+    ] = DEFAULT_OBJECT_GRAPH_REPORT,
+    figures_dir: Annotated[
+        Path,
+        typer.Option("--figures-dir", help="Output directory for object graph figures."),
+    ] = DEFAULT_PHASE2_FIGURES_DIR,
+    source_data_dir: Annotated[
+        Path,
+        typer.Option("--source-data-dir", help="Output directory for figure source CSVs."),
+    ] = DEFAULT_PHASE2_SOURCE_DATA_DIR,
+) -> None:
+    """Build strict evidence-backed object-use graph outputs."""
+    try:
+        metrics = run_object_graph_analysis(
+            phase2_path=phase2,
+            object_graph_candidates_path=object_graph_candidates,
+            object_mentions_path=object_mentions,
+            phase1_path=phase1,
+            out_nodes_path=out_nodes,
+            out_edges_path=out_edges,
+            out_cards_path=out_cards,
+            out_report_path=out_report,
+            figures_dir=figures_dir,
+            source_data_dir=source_data_dir,
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        error_console.print(f"[red]Failed to build object graph:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    console.print(
+        f"Built {metrics['strict_nodes']} strict object nodes and "
+        f"{metrics['strict_edges']} strict edges; evidence cards={metrics['evidence_cards']}. "
+        f"Wrote {out_nodes}, {out_edges}, {out_cards}, and {out_report}."
     )
 
 

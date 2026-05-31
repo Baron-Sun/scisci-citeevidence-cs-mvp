@@ -25,12 +25,13 @@ Active course MVP pipeline. Implemented pieces include:
 - Phase-2 LLM structured evidence extraction pilot
 - Phase-2 failed-row diagnostics and conservative local revalidation
 - Phase-2 pilot analysis report, case-study tables, and reproducible figures
+- SciSci-style full-data candidate analysis over the full Phase-1/object-match outputs
+- evidence-backed object-use mini graph from strict Phase-2 labels
 
 The current Phase-2 pilot has 582 valid model-assisted structured evidence labels and 18 remaining failed rows after revalidation. Phase-2 labels are evidence-grounded, schema-validated LLM-assisted labels; they are not human gold annotations.
 
 Not yet complete:
 
-- final aggregation and object-use graph analysis
 - course report and slides
 
 ## Requirements
@@ -213,6 +214,37 @@ citeevidence analysis phase2-pilot \
   --source-data-dir figures/source_data
 ```
 
+Run the deterministic full-data SciSci analysis. Full Phase-1 counts are candidate-level
+signals; the Phase-2 pilot remains the evidence-backed validated sample:
+
+```bash
+citeevidence analysis scisci-full \
+  --contexts data/processed/analysis_ready_strong_contexts.parquet \
+  --object-mentions data/processed/object_mentions.parquet \
+  --object-graph-candidates data/processed/object_graph_candidate_mentions.parquet \
+  --phase1 data/processed/phase1_citation_function_candidates.parquet \
+  --phase2 data/processed/phase2_structured_labels_pilot_revalidated.parquet \
+  --out-report reports/scisci_full_data_analysis_report.md \
+  --figures-dir figures \
+  --source-data-dir figures/source_data
+```
+
+Build the strict evidence-backed object-use mini graph:
+
+```bash
+citeevidence analysis object-graph \
+  --phase2 data/processed/phase2_structured_labels_pilot_revalidated.parquet \
+  --object-graph-candidates data/processed/object_graph_candidate_mentions.parquet \
+  --object-mentions data/processed/object_mentions.parquet \
+  --phase1 data/processed/phase1_citation_function_candidates.parquet \
+  --out-nodes data/processed/evidence_backed_object_graph_nodes.csv \
+  --out-edges data/processed/evidence_backed_object_graph_edges.csv \
+  --out-cards data/processed/evidence_cards.csv \
+  --out-report reports/evidence_backed_object_graph_report.md \
+  --figures-dir figures \
+  --source-data-dir figures/source_data
+```
+
 ## Current Key Outputs
 
 - `data/processed/analysis_ready_strong_contexts.parquet`
@@ -223,6 +255,12 @@ citeevidence analysis phase2-pilot \
 - `data/processed/phase2_structured_labels_pilot_revalidated.parquet`
 - `reports/phase2_structured_extraction_pilot_revalidated_report.md`
 - `reports/phase2_pilot_analysis_report.md`
+- `reports/scisci_full_data_analysis_report.md`
+- `reports/evidence_backed_object_graph_report.md`
+- `data/processed/scisci_evidence_funnel.csv`
+- `data/processed/evidence_backed_object_graph_nodes.csv`
+- `data/processed/evidence_backed_object_graph_edges.csv`
+- `data/processed/evidence_cards.csv`
 
 ## Project Layout
 

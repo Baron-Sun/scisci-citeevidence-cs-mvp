@@ -1,0 +1,49 @@
+canonical_name,object_type,applies,background,compares_against,critiques,extends,unclear,uses,total
+unknown,unknown,1,15,25,16,11,1,4,73
+method,method,16,1,11,2,16,0,9,55
+accuracy,metric,1,20,24,0,2,0,0,47
+BERT,model,1,12,11,4,1,0,17,46
+BLEU,metric,2,3,11,5,1,0,15,37
+model,model,3,4,11,1,9,0,7,35
+LSTM,model,0,6,9,5,4,0,7,31
+Transformer,model,1,11,4,1,2,0,5,24
+CRF,method,1,5,6,0,4,0,5,21
+seq2seq,model,0,7,3,6,2,0,3,21
+software_or_tool,software_or_tool,8,0,0,0,3,0,10,21
+dataset_or_database,dataset_or_database,1,1,4,1,1,0,12,20
+claim_or_finding,claim_or_finding,0,3,8,5,2,0,1,19
+ROUGE,metric,0,0,2,3,0,0,9,14
+GloVe,model,0,2,5,0,0,0,7,14
+Penn Treebank,dataset_or_database,1,5,1,0,1,0,5,13
+WordNet,dataset_or_database,0,7,2,2,0,0,2,13
+word2vec,model,0,3,0,1,1,0,6,11
+attention mechanism,method,1,7,1,0,1,0,0,10
+WMT,benchmark_or_protocol,2,2,3,0,1,0,2,10
+theory_or_concept,theory_or_concept,0,2,1,1,0,0,4,8
+ELMo,model,0,3,4,0,0,0,1,8
+F1,metric,0,3,5,0,0,0,0,8
+METEOR,metric,0,1,2,3,0,0,1,7
+SemEval,benchmark_or_protocol,0,3,0,0,0,0,4,7
+task,task,2,3,2,0,0,0,0,7
+Moses,software_or_tool,0,0,0,0,0,0,6,6
+metric,metric,0,0,1,2,0,0,3,6
+GIZA++,software_or_tool,0,1,0,0,0,0,4,5
+HMM,method,0,2,1,1,0,0,1,5
+BERT,metric,0,0,3,0,0,0,1,4
+LSTM,metric,0,1,1,0,0,0,1,3
+METEOR,model,0,0,1,0,0,0,1,2
+word2vec,metric,0,1,1,0,0,0,0,2
+word2vec,claim_or_finding,0,0,0,1,0,0,0,1
+BERT,dataset_or_database,0,0,0,0,0,0,1,1
+SemEval,metric,0,0,1,0,0,0,0,1
+Penn Treebank,metric,0,0,0,0,0,0,1,1
+BERT,method,0,1,0,0,0,0,0,1
+Moses,metric,0,0,1,0,0,0,0,1
+Moses,method,0,1,0,0,0,0,0,1
+METEOR,benchmark_or_protocol,0,0,1,0,0,0,0,1
+LSTM,method,0,0,0,0,0,0,1,1
+F1,benchmark_or_protocol,0,0,1,0,0,0,0,1
+ELMo,method,0,1,0,0,0,0,0,1
+ELMo,dataset_or_database,0,1,0,0,0,0,0,1
+BLEU,model,0,0,0,0,0,0,1,1
+Penn Treebank,benchmark_or_protocol,0,0,1,0,0,0,0,1

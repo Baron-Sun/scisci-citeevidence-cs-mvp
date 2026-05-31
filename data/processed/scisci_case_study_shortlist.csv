@@ -1,0 +1,91 @@
+case_type,entity_id,entity_title_or_name,object_type,total_count,evidence_use_count,share
+top_evidence_use_cited_paper,N19-1423,{BERT}: Pre-training of Deep Bidirectional Transformers for Language Understanding,,12756,1750,0.13719034179993728
+top_evidence_use_cited_paper,D14-1162,{G}lo{V}e: Global Vectors for Word Representation,,6961,1443,0.20729780203993678
+top_evidence_use_cited_paper,P02-1040,{B}leu: a Method for Automatic Evaluation of Machine Translation,,5683,1036,0.1822980819989442
+top_evidence_use_cited_paper,P07-2045,{M}oses: Open Source Toolkit for Statistical Machine Translation,,2818,759,0.26933995741660754
+top_evidence_use_cited_paper,D14-1181,Convolutional Neural Networks for Sentence Classification,,3328,500,0.1502403846153846
+top_evidence_use_cited_paper,J03-1002,A Systematic Comparison of Various Statistical Alignment Models,,2475,455,0.18383838383838383
+top_evidence_use_cited_paper,W04-1013,{ROUGE}: A Package for Automatic Evaluation of Summaries,,2032,397,0.1953740157480315
+top_evidence_use_cited_paper,N18-1202,Deep Contextualized Word Representations,,4705,379,0.08055260361317747
+top_evidence_use_cited_paper,Q17-1010,Enriching Word Vectors with Subword Information,,1766,358,0.20271800679501698
+top_evidence_use_cited_paper,D15-1166,Effective Approaches to Attention-based Neural Machine Translation,,2232,341,0.1527777777777778
+top_evidence_use_cited_paper,2020.emnlp-demos.6,Transformers: State-of-the-Art Natural Language Processing,,846,336,0.3971631205673759
+top_evidence_use_cited_paper,J93-2004,Building a Large Annotated Corpus of {E}nglish: The {P}enn {T}reebank,,2127,333,0.15655853314527504
+top_evidence_use_cited_paper,N16-1030,Neural Architectures for Named Entity Recognition,,2254,308,0.13664596273291926
+top_evidence_use_cited_paper,D16-1264,"{SQ}u{AD}: 100,000+ Questions for Machine Comprehension of Text",,2615,307,0.11739961759082218
+top_evidence_use_cited_paper,N13-1090,Linguistic Regularities in Continuous Space Word Representations,,2507,299,0.11926605504587157
+high_citation_low_evidence_use_share,P18-1138,Knowledge Diffusion for Neural Dialogue Generation,,87,0,0.0
+high_citation_low_evidence_use_share,R11-1002,Acquiring Topic Features to improve Event Extraction: in Pre-selected and Balanced Collections,,85,0,0.0
+high_citation_low_evidence_use_share,D13-1156,Fast Joint Compression and Summarization via Graph Cuts,,76,0,0.0
+high_citation_low_evidence_use_share,P11-2016,That{'}s What She Said: Double Entendre Identification,,57,0,0.0
+high_citation_low_evidence_use_share,P03-1028,Closing the Gap: Learning-Based Information Extraction Rivaling Knowledge-Engineering Methods,,48,0,0.0
+high_citation_low_evidence_use_share,S10-1097,{T}witter Based System: Using {T}witter for Disambiguating Sentiment Ambiguous Adjectives,,46,0,0.0
+high_citation_low_evidence_use_share,2020.fnp-1.23,{AMEX} {AI}-Labs: An Investigative Study on Extractive Summarization of Financial Documents,,44,0,0.0
+high_citation_low_evidence_use_share,2020.fnp-1.22,Knowledge Graph and Deep Neural Network for Extractive Text Summarization by Utilizing Triples,,44,0,0.0
+high_citation_low_evidence_use_share,W17-5535,Exploring Joint Neural Model for Sentence Level Discourse Parsing and Sentiment Analysis,,43,0,0.0
+high_citation_low_evidence_use_share,C04-1192,"Fine-Grained Word Sense Disambiguation Based on Parallel Corpora, Word Alignment, Word Clustering and Aligned Wordnets",,40,0,0.0
+high_citation_low_evidence_use_share,2021.dravidianlangtech-1.24,{UVCE}-{IIITT}@{D}ravidian{L}ang{T}ech-{EACL}2021: {T}amil Troll Meme Classification: You need to Pay more Attention,,40,0,0.0
+high_citation_low_evidence_use_share,I11-1004,Extracting Pre-ordering Rules from Predicate-Argument Structures,,38,0,0.0
+high_citation_low_evidence_use_share,N10-1014,Unsupervised Syntactic Alignment with Inversion Transduction Grammars,,38,0,0.0
+high_citation_low_evidence_use_share,N12-2012,Automatic Humor Classification on {T}witter,,38,0,0.0
+high_citation_low_evidence_use_share,P13-2099,Evolutionary Hierarchical {D}irichlet Process for Timeline Summarization,,37,0,0.0
+benchmark_comparison_cited_paper,2021.blackboxnlp-1.33,Perturbing Inputs for Fragile Interpretations in Deep Natural Language Processing,,11,11,1.0
+benchmark_comparison_cited_paper,W14-2616,Sentiment classification of online political discussions: a comparison of a word-based and dependency-based method,,10,10,1.0
+benchmark_comparison_cited_paper,2021.findings-acl.327,On the Lack of Robust Interpretability of Neural Text Classifiers,,15,11,0.7333333333333333
+benchmark_comparison_cited_paper,S17-2007,{BIT} at {S}em{E}val-2017 Task 1: Using Semantic Information Space to Evaluate Semantic Textual Similarity,,10,7,0.7
+benchmark_comparison_cited_paper,U10-1003,Multilingual Language Identification: {ALTW} 2010 Shared Task Data,,16,11,0.6875
+benchmark_comparison_cited_paper,W12-3701,Multimodal Sentiment Analysis,,15,12,0.8
+benchmark_comparison_cited_paper,1998.amta-papers.10,An evaluation of the multi-engine {MT} architecture,,27,17,0.6296296296296297
+benchmark_comparison_cited_paper,W14-2605,Aspect-Level Sentiment Analysis in {C}zech,,13,8,0.6153846153846154
+benchmark_comparison_cited_paper,D17-1260,Agent-Aware Dropout {DQN} for Safe and Efficient On-line Dialogue Policy Learning,,10,6,0.6
+benchmark_comparison_cited_paper,N19-1340,Semantic Role Labeling with Associated Memory Network,,10,6,0.6
+benchmark_comparison_cited_paper,W11-1826,From Graphs to Events: A Subgraph Matching Approach for Information Extraction from Biomedical Text,,12,7,0.5833333333333334
+benchmark_comparison_cited_paper,2021.naacl-main.399,Evaluating Saliency Methods for Neural Language Models,,21,12,0.5714285714285714
+benchmark_comparison_cited_paper,2011.eamt-1.2,Tapta: A user-driven translation system for patent documents based on domain-aware Statistical Machine Translation,,14,8,0.5714285714285714
+benchmark_comparison_cited_paper,2020.bionlp-1.9,Comparative Analysis of Text Classification Approaches in Electronic Health Records,,11,6,0.5454545454545454
+benchmark_comparison_cited_paper,2021.emnlp-main.465,Do Transformer Modifications Transfer Across Implementations and Applications?,,13,7,0.5384615384615384
+critique_bottleneck_cited_paper,W16-0302,Towards Early Dementia Detection: Fusing Linguistic and Non-Linguistic Clinical Data,,10,8,0.8
+critique_bottleneck_cited_paper,U17-1009,Medication and Adverse Event Extraction from Noisy Text,,10,6,0.6
+critique_bottleneck_cited_paper,W14-3203,Comparison of different feature sets for identification of variants in progressive aphasia,,14,8,0.5714285714285714
+critique_bottleneck_cited_paper,W16-0308,Exploring Autism Spectrum Disorders Using {HLT},,14,8,0.5714285714285714
+critique_bottleneck_cited_paper,N19-1186,Word Embedding-Based Automatic {MT} Evaluation Metric using Word Position Information,,18,11,0.6111111111111112
+critique_bottleneck_cited_paper,I11-1098,Extending {W}ord{N}et with Hypernyms and Siblings Acquired from {W}ikipedia,,10,5,0.5
+critique_bottleneck_cited_paper,W00-1219,Extraction of {C}hinese Compound Words - An Experimental Study on a Very Large Corpus,,10,5,0.5
+critique_bottleneck_cited_paper,W18-5410,Unsupervised Token-wise Alignment to Improve Interpretation of Encoder-Decoder Models,,10,5,0.5
+critique_bottleneck_cited_paper,N15-1115,Encoding World Knowledge in the Evaluation of Local Coherence,,14,6,0.42857142857142855
+critique_bottleneck_cited_paper,2021.eacl-main.239,Diverse Adversaries for Mitigating Bias in Training,,12,7,0.5833333333333334
+critique_bottleneck_cited_paper,D14-1213,Self-disclosure topic model for classifying and analyzing {T}witter conversations,,15,6,0.4
+critique_bottleneck_cited_paper,2020.findings-emnlp.103,Undersensitivity in Neural Reading Comprehension,,10,4,0.4
+critique_bottleneck_cited_paper,2020.tacl-1.11,Theoretical Limitations of Self-Attention in Neural Sequence Models,,40,15,0.375
+critique_bottleneck_cited_paper,W15-4916,Searching for Context: a Study on Document-Level Labels for Translation Quality Estimation,,16,7,0.4375
+critique_bottleneck_cited_paper,2020.coling-main.9,Hierarchical {C}hinese Legal event extraction via Pedal Attention Mechanism,,16,8,0.5
+dataset_tool_model_infrastructure_object,BERT,BERT,model,47170,7073,0.08251006995972016
+dataset_tool_model_infrastructure_object,LSTM,LSTM,model,34654,4742,0.06810180642927223
+dataset_tool_model_infrastructure_object,BLEU,BLEU,metric,27308,4938,0.10927200820272448
+dataset_tool_model_infrastructure_object,CRF,CRF,method,23524,2379,0.05385988777418806
+dataset_tool_model_infrastructure_object,Transformer,Transformer,model,23049,2857,0.06885331250813484
+dataset_tool_model_infrastructure_object,WordNet,WordNet,dataset_or_database,18263,1353,0.04336636916169304
+dataset_tool_model_infrastructure_object,seq2seq,seq2seq,model,13456,1188,0.03968489892984542
+dataset_tool_model_infrastructure_object,SemEval,SemEval,benchmark_or_protocol,12395,1266,0.07075433642597821
+dataset_tool_model_infrastructure_object,attention mechanism,attention mechanism,method,12020,953,0.03544093178036606
+dataset_tool_model_infrastructure_object,ROUGE,ROUGE,metric,10301,1970,0.13115231530919327
+dataset_tool_model_infrastructure_object,GloVe,GloVe,model,10294,2349,0.17991062755002915
+dataset_tool_model_infrastructure_object,HMM,HMM,method,10096,840,0.04070919175911252
+dataset_tool_model_infrastructure_object,Penn Treebank,Penn Treebank,dataset_or_database,9441,1321,0.10973413833280372
+dataset_tool_model_infrastructure_object,word2vec,word2vec,model,7361,1021,0.09428066838744736
+dataset_tool_model_infrastructure_object,Moses,Moses,software_or_tool,6784,1822,0.20739976415094338
+high_use_share_object,Stanford CoreNLP,Stanford CoreNLP,software_or_tool,2026,538,0.23692003948667326
+high_use_share_object,OPUS,OPUS,software_or_tool,1207,297,0.21789560894780446
+high_use_share_object,NLTK,NLTK,software_or_tool,1228,320,0.21579804560260588
+high_use_share_object,Moses,Moses,software_or_tool,6784,1822,0.20739976415094338
+high_use_share_object,spaCy,spaCy,software_or_tool,767,185,0.2046936114732725
+high_use_share_object,GloVe,GloVe,model,10294,2349,0.17991062755002915
+high_use_share_object,GIZA++,GIZA++,software_or_tool,5013,1068,0.15579493317374826
+high_use_share_object,CoNLL-2003,CoNLL-2003,benchmark_or_protocol,1243,222,0.1415929203539823
+high_use_share_object,CoNLL-2012,CoNLL-2012,benchmark_or_protocol,847,148,0.1322314049586777
+high_use_share_object,ROUGE,ROUGE,metric,10301,1970,0.13115231530919327
+high_use_share_object,WMT,WMT,benchmark_or_protocol,5418,972,0.12476928755998523
+high_use_share_object,OntoNotes,OntoNotes,dataset_or_database,3065,489,0.11973898858075041
+high_use_share_object,METEOR,METEOR,metric,5524,1012,0.1167632150615496
+high_use_share_object,SQuAD,SQuAD,dataset_or_database,5503,898,0.11230238051971651
+high_use_share_object,GLUE,GLUE,benchmark_or_protocol,3051,457,0.10980006555227795

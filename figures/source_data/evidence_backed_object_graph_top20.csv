@@ -1,0 +1,21 @@
+canonical_name,object_type,evidence_backed_edge_count,distinct_contexts,mean_confidence
+unknown,unknown,72,72,0.8618055555555555
+method,method,55,55,0.8818181818181818
+BERT,model,52,52,0.9134615384615384
+BLEU,metric,38,38,0.9210526315789473
+model,model,35,35,0.8985714285714286
+LSTM,model,35,35,0.9128571428571428
+accuracy,metric,24,24,0.8958333333333334
+Transformer,model,22,22,0.8954545454545454
+CRF,method,21,21,0.9238095238095237
+software_or_tool,software_or_tool,21,21,0.9161904761904761
+seq2seq,model,20,20,0.9025000000000001
+dataset_or_database,dataset_or_database,20,20,0.905
+claim_or_finding,claim_or_finding,19,19,0.8710526315789474
+Penn Treebank,dataset_or_database,14,14,0.8985714285714286
+ROUGE,metric,14,14,0.932142857142857
+word2vec,model,14,14,0.905
+GloVe,model,14,14,0.9249999999999999
+WordNet,dataset_or_database,13,13,0.8730769230769231
+WMT,benchmark_or_protocol,10,10,0.915
+METEOR,metric,10,10,0.9199999999999999
