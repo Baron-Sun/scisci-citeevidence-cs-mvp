@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from citeevidence.final_release.metrics import INTENT_ORDER
+from citeevidence.final_release.metrics import INTENT_ORDER, classify_object_role_quadrant
 
 
 def planned_figure_modules() -> tuple[str, ...]:
@@ -94,6 +94,93 @@ def plot_section_function_lift_heatmap(
     return outputs
 
 
+def plot_object_role_signature_map(
+    data: pd.DataFrame,
+    output_png: str | Path,
+    output_svg: str | Path | None = None,
+    *,
+    top_n_labels: int = 12,
+    min_non_background_edges: int = 20,
+) -> dict[str, str]:
+    """Plot seed-registry object role signatures as a citation-use map."""
+    import matplotlib.pyplot as plt
+
+    title = "Seed-registry objects occupy distinct citation-use roles"
+    x_label = "Use share among non-background object edges"
+    y_label = "Compare/critique share among non-background object edges"
+    frame = _prepare_object_role_frame(data, min_non_background_edges=min_non_background_edges)
+    output_png = Path(output_png)
+    output_png.parent.mkdir(parents=True, exist_ok=True)
+    if output_svg is not None:
+        output_svg = Path(output_svg)
+        output_svg.parent.mkdir(parents=True, exist_ok=True)
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    labeled_objects: list[str] = []
+    if frame.empty:
+        ax.text(0.5, 0.5, "No object role signature data", ha="center", va="center")
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+    else:
+        for object_type, group in frame.groupby("object_type", sort=True):
+            ax.scatter(
+                group["use_share_non_background"],
+                group["compare_critique_share_non_background"],
+                s=_object_point_sizes(group["non_background_edges"]),
+                alpha=0.72,
+                label=object_type or "unknown",
+                edgecolors="white",
+                linewidths=0.6,
+            )
+        ax.axvline(
+            frame["use_share_non_background"].median(),
+            color="0.75",
+            linewidth=1,
+            linestyle="--",
+        )
+        ax.axhline(
+            frame["compare_critique_share_non_background"].median(),
+            color="0.75",
+            linewidth=1,
+            linestyle="--",
+        )
+        labeled = _object_label_rows(frame, top_n_labels=top_n_labels)
+        for _, row in labeled.iterrows():
+            ax.annotate(
+                row["canonical_name"],
+                (
+                    row["use_share_non_background"],
+                    row["compare_critique_share_non_background"],
+                ),
+                xytext=(4, 4),
+                textcoords="offset points",
+                fontsize=8,
+            )
+        labeled_objects = list(labeled["canonical_name"])
+        ax.legend(title="Object type", loc="best", fontsize=8)
+
+    ax.set_title(title)
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_label)
+    ax.set_xlim(-0.03, 1.03)
+    ax.set_ylim(-0.03, 1.03)
+    fig.tight_layout()
+    fig.savefig(output_png, dpi=200, bbox_inches="tight")
+    outputs = {
+        "png": str(output_png),
+        "title": title,
+        "x_label": x_label,
+        "y_label": y_label,
+        "plotted_objects": "|".join(frame["canonical_name"]) if not frame.empty else "",
+        "labeled_objects": "|".join(labeled_objects),
+    }
+    if output_svg is not None:
+        fig.savefig(output_svg, bbox_inches="tight")
+        outputs["svg"] = str(output_svg)
+    plt.close(fig)
+    return outputs
+
+
 def _prepare_section_function_frame(
     data: pd.DataFrame,
     *,
@@ -127,6 +214,75 @@ def _prepare_section_function_frame(
     return frame.loc[
         frame["normalized_section"].ne("") & frame["final_intent"].ne("")
     ].copy()
+
+
+def _prepare_object_role_frame(
+    data: pd.DataFrame,
+    *,
+    min_non_background_edges: int,
+) -> pd.DataFrame:
+    frame = data.copy()
+    if "role_quadrant" not in frame:
+        frame = classify_object_role_quadrant(frame)
+    columns = [
+        "canonical_name",
+        "object_type",
+        "non_background_edges",
+        "use_share_non_background",
+        "compare_critique_share_non_background",
+        "role_quadrant",
+    ]
+    for column in columns:
+        if column not in frame:
+            frame[column] = ""
+    frame["canonical_name"] = frame["canonical_name"].map(_clean_text)
+    frame["object_type"] = frame["object_type"].map(_clean_text).replace("", "unknown")
+    for column in [
+        "non_background_edges",
+        "use_share_non_background",
+        "compare_critique_share_non_background",
+    ]:
+        frame[column] = pd.to_numeric(frame[column], errors="coerce").fillna(0)
+    frame = frame.loc[
+        frame["canonical_name"].ne("")
+        & frame["non_background_edges"].ge(min_non_background_edges)
+    ].copy()
+    return frame.sort_values(
+        ["non_background_edges", "canonical_name"],
+        ascending=[False, True],
+    ).reset_index(drop=True)
+
+
+def _object_point_sizes(non_background_edges: pd.Series) -> pd.Series:
+    counts = pd.to_numeric(non_background_edges, errors="coerce").fillna(0)
+    if counts.empty:
+        return counts
+    max_count = max(float(counts.max()), 1.0)
+    return 40 + (counts / max_count) * 360
+
+
+def _object_label_rows(frame: pd.DataFrame, *, top_n_labels: int) -> pd.DataFrame:
+    if frame.empty or top_n_labels <= 0:
+        return frame.head(0).copy()
+    top = frame.nlargest(top_n_labels, "non_background_edges")
+    extremes = []
+    for quadrant in sorted(frame["role_quadrant"].dropna().unique()):
+        subset = frame.loc[frame["role_quadrant"].eq(quadrant)]
+        if subset.empty:
+            continue
+        extremes.append(
+            subset.sort_values(
+                [
+                    "non_background_edges",
+                    "use_share_non_background",
+                    "compare_critique_share_non_background",
+                ],
+                ascending=[False, False, False],
+            ).head(1)
+        )
+    if extremes:
+        top = pd.concat([top, *extremes], ignore_index=True)
+    return top.drop_duplicates("canonical_name").head(top_n_labels)
 
 
 def _section_order(frame: pd.DataFrame, *, max_sections: int) -> list[str]:

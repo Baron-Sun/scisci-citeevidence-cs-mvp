@@ -25,6 +25,7 @@ EVIDENCE_USE_INTENTS = (
 INTENT_COUNT_COLUMNS = {intent: f"{intent}_count" for intent in INTENT_ORDER}
 PAPER_KEY_COLUMNS = ["resolved_cited_acl_id", "resolved_cited_title"]
 OPTIONAL_PAPER_COLUMNS = ["resolved_cited_year", "resolved_cited_authors"]
+ROLE_QUADRANT_RULE_VERSION = "v1_heuristic"
 
 
 def safe_rate(numerator: int | float, denominator: int | float) -> float:
@@ -148,6 +149,164 @@ def build_section_function_lift(
     frame["rows"] = frame["rows"].astype(int)
     for column in ["section_total", "intent_total", "grand_total"]:
         frame[column] = frame[column].astype(int)
+    return frame[columns].reset_index(drop=True)
+
+
+def build_object_role_signature(edges: pd.DataFrame) -> pd.DataFrame:
+    """Build seed-registry object role signatures from evidence-backed edge rows."""
+    columns = _object_role_signature_columns(include_quadrant=False)
+    source_has_context_id = "context_id" in edges
+    frame = _ensure_columns(
+        edges.copy(),
+        [
+            "object_id",
+            "canonical_name",
+            "object_type",
+            "final_intent",
+            "context_id",
+            "evidence_span",
+            "confidence",
+            "normalized_section",
+        ],
+    )
+    text_columns = [
+        "object_id",
+        "canonical_name",
+        "object_type",
+        "final_intent",
+        "context_id",
+        "evidence_span",
+        "normalized_section",
+    ]
+    frame = _clean_text_columns(frame, text_columns)
+    frame = frame.loc[
+        frame["object_id"].ne("")
+        & frame["canonical_name"].ne("")
+        & frame["final_intent"].ne("")
+    ].copy()
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+
+    deduped = _deduplicate_object_edges(frame, source_has_context_id=source_has_context_id)
+    if deduped.empty:
+        return pd.DataFrame(columns=columns)
+
+    metadata = (
+        deduped[["object_id", "canonical_name", "object_type"]]
+        .groupby("object_id", dropna=False)
+        .agg(
+            canonical_name=("canonical_name", _first_non_empty),
+            object_type=("object_type", _first_non_empty),
+        )
+        .reset_index()
+    )
+    total_edges = (
+        deduped.groupby("object_id", dropna=False)
+        .size()
+        .reset_index(name="total_edges")
+    )
+    intent_counts = _object_intent_counts(deduped)
+    distinct_contexts = _object_distinct_contexts(deduped)
+    confidence = _object_mean_confidence(deduped)
+
+    signature = (
+        metadata.merge(total_edges, on="object_id", how="left")
+        .merge(intent_counts, on="object_id", how="left")
+        .merge(distinct_contexts, on="object_id", how="left")
+        .merge(confidence, on="object_id", how="left")
+    )
+    count_columns = [
+        "total_edges",
+        "background_edges",
+        "uses_count",
+        "compares_against_count",
+        "extends_count",
+        "critiques_count",
+        "applies_count",
+        "distinct_contexts",
+    ]
+    for column in count_columns:
+        if column not in signature:
+            signature[column] = 0
+    signature[count_columns] = signature[count_columns].fillna(0).astype(int)
+    evidence_columns = [
+        "uses_count",
+        "compares_against_count",
+        "extends_count",
+        "critiques_count",
+        "applies_count",
+    ]
+    signature["evidence_use_count"] = signature[evidence_columns].sum(axis=1).astype(int)
+    signature["non_background_edges"] = signature["evidence_use_count"]
+    signature["use_share_non_background"] = _safe_series_rate(
+        signature["uses_count"],
+        signature["non_background_edges"],
+    )
+    signature["compare_critique_share_non_background"] = _safe_series_rate(
+        signature["compares_against_count"] + signature["critiques_count"],
+        signature["non_background_edges"],
+    )
+    signature["critique_share_non_background"] = _safe_series_rate(
+        signature["critiques_count"],
+        signature["non_background_edges"],
+    )
+    signature["background_share"] = _safe_series_rate(
+        signature["background_edges"],
+        signature["total_edges"],
+    )
+    signature = _ensure_columns(signature, columns)
+    return signature[columns].sort_values(
+        ["non_background_edges", "total_edges", "canonical_name"],
+        ascending=[False, False, True],
+    ).reset_index(drop=True)
+
+
+def classify_object_role_quadrant(signature_table: pd.DataFrame) -> pd.DataFrame:
+    """Add heuristic descriptive role quadrants for seed-registry objects."""
+    columns = _object_role_signature_columns(include_quadrant=True)
+    frame = _ensure_columns(signature_table.copy(), _object_role_signature_columns(False))
+    for column in [
+        "background_share",
+        "non_background_edges",
+        "use_share_non_background",
+        "compare_critique_share_non_background",
+        "critique_share_non_background",
+        "critiques_count",
+    ]:
+        frame[column] = pd.to_numeric(frame[column], errors="coerce").fillna(0)
+
+    canonical_background = (
+        frame["background_share"].ge(0.75)
+        & frame["non_background_edges"].ge(20)
+    )
+    operational_infrastructure = (
+        frame["use_share_non_background"].ge(0.60)
+        & frame["non_background_edges"].ge(20)
+    )
+    critique_target = (
+        frame["critique_share_non_background"].ge(0.15)
+        & frame["critiques_count"].ge(10)
+    )
+    evaluation_anchor = (
+        frame["compare_critique_share_non_background"].ge(0.45)
+        & frame["non_background_edges"].ge(20)
+    )
+    frame["role_quadrant"] = np.select(
+        [
+            canonical_background,
+            operational_infrastructure,
+            critique_target,
+            evaluation_anchor,
+        ],
+        [
+            "canonical_background",
+            "operational_infrastructure",
+            "critique_target",
+            "evaluation_anchor",
+        ],
+        default="mixed_role",
+    )
+    frame["role_quadrant_rule_version"] = ROLE_QUADRANT_RULE_VERSION
     return frame[columns].reset_index(drop=True)
 
 
@@ -354,6 +513,107 @@ def _section_function_columns(*, include_lift: bool) -> list[str]:
     return columns
 
 
+def _object_role_signature_columns(include_quadrant: bool) -> list[str]:
+    columns = [
+        "object_id",
+        "canonical_name",
+        "object_type",
+        "total_edges",
+        "background_edges",
+        "non_background_edges",
+        "uses_count",
+        "compares_against_count",
+        "extends_count",
+        "critiques_count",
+        "applies_count",
+        "use_share_non_background",
+        "compare_critique_share_non_background",
+        "critique_share_non_background",
+        "background_share",
+        "evidence_use_count",
+        "distinct_contexts",
+        "mean_confidence",
+    ]
+    if include_quadrant:
+        columns.extend(["role_quadrant", "role_quadrant_rule_version"])
+    return columns
+
+
+def _deduplicate_object_edges(
+    frame: pd.DataFrame,
+    *,
+    source_has_context_id: bool,
+) -> pd.DataFrame:
+    fallback_keys = ["object_id", "canonical_name", "final_intent", "evidence_span"]
+    if not source_has_context_id:
+        return frame.drop_duplicates(fallback_keys).copy()
+
+    with_context = frame.loc[frame["context_id"].ne("")].drop_duplicates(
+        ["context_id", "object_id", "final_intent"],
+    )
+    without_context = frame.loc[frame["context_id"].eq("")].drop_duplicates(fallback_keys)
+    return pd.concat([with_context, without_context], ignore_index=True)
+
+
+def _object_intent_counts(deduped: pd.DataFrame) -> pd.DataFrame:
+    counts = (
+        deduped.groupby(["object_id", "final_intent"], dropna=False)
+        .size()
+        .reset_index(name="rows")
+    )
+    pivot = counts.pivot_table(
+        index="object_id",
+        columns="final_intent",
+        values="rows",
+        fill_value=0,
+        aggfunc="sum",
+    ).reset_index()
+    for intent in INTENT_ORDER:
+        if intent not in pivot:
+            pivot[intent] = 0
+    pivot["background_edges"] = pd.to_numeric(
+        pivot["background"],
+        errors="coerce",
+    ).fillna(0).astype(int)
+    for intent in EVIDENCE_USE_INTENTS:
+        pivot[f"{intent}_count"] = pd.to_numeric(
+            pivot[intent],
+            errors="coerce",
+        ).fillna(0).astype(int)
+    return pivot[
+        [
+            "object_id",
+            "background_edges",
+            "uses_count",
+            "compares_against_count",
+            "extends_count",
+            "critiques_count",
+            "applies_count",
+        ]
+    ]
+
+
+def _object_distinct_contexts(deduped: pd.DataFrame) -> pd.DataFrame:
+    contexts = deduped.loc[deduped["context_id"].ne("")]
+    if contexts.empty:
+        return deduped[["object_id"]].drop_duplicates().assign(distinct_contexts=0)
+    return (
+        contexts.groupby("object_id", dropna=False)
+        .agg(distinct_contexts=("context_id", "nunique"))
+        .reset_index()
+    )
+
+
+def _object_mean_confidence(deduped: pd.DataFrame) -> pd.DataFrame:
+    frame = deduped[["object_id", "confidence"]].copy()
+    frame["confidence"] = pd.to_numeric(frame["confidence"], errors="coerce")
+    return (
+        frame.groupby("object_id", dropna=False)
+        .agg(mean_confidence=("confidence", "mean"))
+        .reset_index()
+    )
+
+
 def _label_count_columns() -> list[str]:
     return [*INTENT_COUNT_COLUMNS.values(), "labeled_contexts"]
 
@@ -431,6 +691,6 @@ def _first_non_empty(values: pd.Series) -> str:
 
 
 def _safe_series_rate(numerator: pd.Series, denominator: pd.Series) -> pd.Series:
-    denom = pd.to_numeric(denominator, errors="coerce").replace(0, pd.NA)
-    num = pd.to_numeric(numerator, errors="coerce").fillna(0)
-    return (num / denom).fillna(0.0)
+    denom = pd.to_numeric(denominator, errors="coerce").astype(float)
+    num = pd.to_numeric(numerator, errors="coerce").fillna(0).astype(float)
+    return num.div(denom.where(denom.ne(0))).fillna(0.0)
