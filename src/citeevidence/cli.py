@@ -163,6 +163,13 @@ from citeevidence.phase1_llm_review import (
     run_phase1_llm_review,
 )
 from citeevidence.phase2 import (
+    DEFAULT_PHASE2_BATCH_COST_REPORT,
+    DEFAULT_PHASE2_BATCH_FAILED_PATH,
+    DEFAULT_PHASE2_BATCH_LABELS_PATH,
+    DEFAULT_PHASE2_BATCH_MANIFEST_PATH,
+    DEFAULT_PHASE2_BATCH_REPORT,
+    DEFAULT_PHASE2_BATCH_REQUESTS_PATH,
+    DEFAULT_PHASE2_BATCH_STATUS_PATH,
     DEFAULT_PHASE2_CACHE_DIR,
     DEFAULT_PHASE2_DRY_RUN_PROMPTS_PATH,
     DEFAULT_PHASE2_FAILED_AFTER_REVALIDATION_PATH,
@@ -175,8 +182,13 @@ from citeevidence.phase2 import (
     DEFAULT_PHASE2_STRUCTURED_JSONL_PATH,
     DEFAULT_PHASE2_STRUCTURED_PARQUET_PATH,
     DEFAULT_PHASE2_STRUCTURED_REPORT,
+    check_phase2_batch_status,
+    collect_phase2_batch_results,
+    estimate_phase2_batch_cost,
+    prepare_phase2_batch_requests,
     revalidate_phase2_failed_rows,
     run_phase2_structured_extraction,
+    submit_phase2_batch,
 )
 from citeevidence.review import (
     DEFAULT_MANUAL_REVIEW_CLEAN_PATH,
@@ -1581,6 +1593,271 @@ def extract_phase2_structured(
         f"{completed} {mode}; failed={metrics['failed_rows']}. "
         f"Wrote {jsonl_out}, {parquet_out}, {failed_out}, {dry_run_prompts_out}, "
         f"{review_sample}, and {report}."
+    )
+
+
+@phase2_app.command("estimate-batch-cost")
+def estimate_phase2_batch_cost_command(
+    queue: Annotated[
+        list[Path] | None,
+        typer.Option(
+            "--queue",
+            help="Phase-1 LLM queue parquet. Repeat for high+medium combined.",
+        ),
+    ] = None,
+    model: Annotated[
+        str | None,
+        typer.Option("--model", help="OpenAI model name for Batch API estimate."),
+    ] = None,
+    pilot_labels: Annotated[
+        Path | None,
+        typer.Option("--pilot-labels", help="Pilot labels with token usage for averages."),
+    ] = DEFAULT_PHASE2_REVALIDATED_PARQUET_PATH,
+    input_tokens_per_row: Annotated[
+        float | None,
+        typer.Option("--input-tokens-per-row", help="Override input-token average."),
+    ] = None,
+    output_tokens_per_row: Annotated[
+        float | None,
+        typer.Option("--output-tokens-per-row", help="Override output-token average."),
+    ] = None,
+    out: Annotated[
+        Path,
+        typer.Option("--out", help="Output Batch cost-estimate markdown report."),
+    ] = DEFAULT_PHASE2_BATCH_COST_REPORT,
+) -> None:
+    """Estimate Phase-2 Batch API token volume and cost without API calls."""
+    queue_paths = queue or [
+        DEFAULT_PHASE1_LLM_QUEUE_HIGH_PATH,
+        DEFAULT_PHASE1_LLM_QUEUE_MEDIUM_PATH,
+    ]
+    try:
+        metrics = estimate_phase2_batch_cost(
+            queue_paths=queue_paths,
+            out_report_path=out,
+            model=model,
+            pilot_labels_path=pilot_labels,
+            input_tokens_per_row=input_tokens_per_row,
+            output_tokens_per_row=output_tokens_per_row,
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        error_console.print(f"[red]Failed to estimate Phase-2 Batch cost:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    cost = metrics["estimated_total_cost_usd"]
+    cost_text = f"${cost:.2f}" if cost is not None else "unknown"
+    console.print(
+        f"Estimated {metrics['total_rows']} rows for model={metrics['model']}; "
+        f"tokens={metrics['estimated_total_tokens']}; cost={cost_text}. Wrote {out}."
+    )
+
+
+@phase2_app.command("prepare-batch")
+def prepare_phase2_batch_command(
+    queue: Annotated[
+        list[Path] | None,
+        typer.Option(
+            "--queue",
+            help="Phase-1 LLM queue parquet. Repeat for high+medium combined.",
+        ),
+    ] = None,
+    candidates: Annotated[
+        Path | None,
+        typer.Option("--candidates", help="Optional Phase-1 candidates parquet."),
+    ] = DEFAULT_PHASE1_CANDIDATES_FULL_PATH,
+    contexts: Annotated[
+        Path | None,
+        typer.Option("--contexts", help="Optional analysis-ready strong contexts parquet."),
+    ] = DEFAULT_PHASE1_CONTEXTS_PATH,
+    object_mentions: Annotated[
+        Path | None,
+        typer.Option("--object-mentions", help="Optional object mentions parquet."),
+    ] = DEFAULT_PHASE1_OBJECT_MENTIONS_PATH,
+    object_graph_candidates: Annotated[
+        Path | None,
+        typer.Option("--object-graph-candidates", help="Optional object graph candidates."),
+    ] = DEFAULT_PHASE1_OBJECT_GRAPH_CANDIDATES_PATH,
+    cited_title_profiles: Annotated[
+        Path | None,
+        typer.Option("--cited-title-profiles", help="Optional cited-title profiles parquet."),
+    ] = DEFAULT_PHASE1_CITED_TITLE_PROFILES_PATH,
+    out_jsonl: Annotated[
+        Path,
+        typer.Option("--out-jsonl", help="Output Batch request JSONL path/prefix."),
+    ] = DEFAULT_PHASE2_BATCH_REQUESTS_PATH,
+    manifest: Annotated[
+        Path,
+        typer.Option("--manifest", help="Output Batch manifest JSON path."),
+    ] = DEFAULT_PHASE2_BATCH_MANIFEST_PATH,
+    model: Annotated[
+        str | None,
+        typer.Option("--model", help="OpenAI model name for Batch requests."),
+    ] = None,
+    prompt_version: Annotated[
+        str,
+        typer.Option("--prompt-version", help="Prompt version stored in custom_id."),
+    ] = "phase2_structured_extraction_v1",
+    max_rows: Annotated[
+        int | None,
+        typer.Option("--max-rows", min=1, help="Optional cap for test/smoke runs."),
+    ] = None,
+    seed: Annotated[
+        int,
+        typer.Option("--seed", help="Deterministic seed for compatible queue prep."),
+    ] = 42,
+    skip_enrichment: Annotated[
+        bool,
+        typer.Option(
+            "--skip-enrichment",
+            help="Use queue fields as-is instead of reading large enrichment tables.",
+        ),
+    ] = False,
+) -> None:
+    """Prepare chunked Batch API JSONL requests for Phase-2 extraction."""
+    queue_paths = queue or [
+        DEFAULT_PHASE1_LLM_QUEUE_HIGH_PATH,
+        DEFAULT_PHASE1_LLM_QUEUE_MEDIUM_PATH,
+    ]
+    if skip_enrichment:
+        candidates = None
+        contexts = None
+        object_mentions = None
+        object_graph_candidates = None
+        cited_title_profiles = None
+    try:
+        batch_manifest = prepare_phase2_batch_requests(
+            queue_paths=queue_paths,
+            out_jsonl_path=out_jsonl,
+            manifest_path=manifest,
+            candidates_path=candidates,
+            contexts_path=contexts,
+            object_mentions_path=object_mentions,
+            object_graph_candidates_path=object_graph_candidates,
+            cited_title_profiles_path=cited_title_profiles,
+            model=model,
+            prompt_version=prompt_version,
+            max_rows=max_rows,
+            seed=seed,
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        error_console.print(f"[red]Failed to prepare Phase-2 Batch requests:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    console.print(
+        f"Prepared {batch_manifest['total_rows']} Batch requests in "
+        f"{len(batch_manifest['request_files'])} file(s). Wrote {manifest}."
+    )
+
+
+@phase2_app.command("submit-batch")
+def submit_phase2_batch_command(
+    manifest: Annotated[
+        Path,
+        typer.Option("--manifest", help="Prepared Batch manifest JSON path."),
+    ] = DEFAULT_PHASE2_BATCH_MANIFEST_PATH,
+    status_out: Annotated[
+        Path,
+        typer.Option("--status-out", help="Output Batch status JSON path."),
+    ] = DEFAULT_PHASE2_BATCH_STATUS_PATH,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Validate manifest without API upload/submission."),
+    ] = False,
+    resubmit: Annotated[
+        bool,
+        typer.Option("--resubmit", help="Resubmit files even if batch_id already exists."),
+    ] = False,
+) -> None:
+    """Submit prepared Phase-2 Batch files to OpenAI."""
+    try:
+        status = submit_phase2_batch(
+            manifest_path=manifest,
+            status_out_path=status_out,
+            dry_run=dry_run,
+            resubmit=resubmit,
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        error_console.print(f"[red]Failed to submit Phase-2 Batch:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    console.print(
+        f"Batch submit/status complete for {status.get('total_request_files', 0)} file(s). "
+        f"Wrote {status_out}."
+    )
+
+
+@phase2_app.command("check-batch")
+def check_phase2_batch_command(
+    manifest: Annotated[
+        Path,
+        typer.Option("--manifest", help="Prepared/submitted Batch manifest JSON path."),
+    ] = DEFAULT_PHASE2_BATCH_MANIFEST_PATH,
+    status_out: Annotated[
+        Path,
+        typer.Option("--status-out", help="Output Batch status JSON path."),
+    ] = DEFAULT_PHASE2_BATCH_STATUS_PATH,
+) -> None:
+    """Refresh OpenAI Batch statuses for a Phase-2 manifest."""
+    try:
+        status = check_phase2_batch_status(
+            manifest_path=manifest,
+            status_out_path=status_out,
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        error_console.print(f"[red]Failed to check Phase-2 Batch:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    console.print(
+        f"Status distribution: {status['status_distribution']}. Wrote {status_out}."
+    )
+
+
+@phase2_app.command("collect-batch")
+def collect_phase2_batch_command(
+    manifest: Annotated[
+        Path,
+        typer.Option("--manifest", help="Submitted Batch manifest JSON path."),
+    ] = DEFAULT_PHASE2_BATCH_MANIFEST_PATH,
+    queue: Annotated[
+        list[Path] | None,
+        typer.Option(
+            "--queue",
+            help="Phase-1 LLM queue parquet. Repeat for high+medium combined.",
+        ),
+    ] = None,
+    out_labels: Annotated[
+        Path,
+        typer.Option("--out-labels", help="Output validated Phase-2 Batch labels parquet."),
+    ] = DEFAULT_PHASE2_BATCH_LABELS_PATH,
+    out_failed: Annotated[
+        Path,
+        typer.Option("--out-failed", help="Output failed Phase-2 Batch rows JSONL."),
+    ] = DEFAULT_PHASE2_BATCH_FAILED_PATH,
+    report: Annotated[
+        Path,
+        typer.Option("--report", help="Output Phase-2 Batch run report."),
+    ] = DEFAULT_PHASE2_BATCH_REPORT,
+    redownload: Annotated[
+        bool,
+        typer.Option("--redownload", help="Redownload Batch output files if present."),
+    ] = False,
+) -> None:
+    """Download, parse, and validate completed Phase-2 Batch outputs."""
+    queue_paths = queue or [
+        DEFAULT_PHASE1_LLM_QUEUE_HIGH_PATH,
+        DEFAULT_PHASE1_LLM_QUEUE_MEDIUM_PATH,
+    ]
+    try:
+        metrics = collect_phase2_batch_results(
+            manifest_path=manifest,
+            queue_paths=queue_paths,
+            out_labels_path=out_labels,
+            out_failed_path=out_failed,
+            report_path=report,
+            redownload=redownload,
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        error_console.print(f"[red]Failed to collect Phase-2 Batch:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    console.print(
+        f"Collected {metrics['successful_rows']} valid labels; "
+        f"failed={metrics['failed_rows']}. Wrote {out_labels}, {out_failed}, and {report}."
     )
 
 

@@ -52,6 +52,8 @@ external/
 data/processed/*.csv
 data/processed/*.jsonl
 data/cache/**
+data/batch/**
+!data/batch/.gitkeep
 
 # Local OS/editor files
 .DS_Store

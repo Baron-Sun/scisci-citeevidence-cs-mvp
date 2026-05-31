@@ -185,6 +185,49 @@ citeevidence phase2 extract-structured \
   --limit 600
 ```
 
+For large Phase-2 runs, prepare and submit OpenAI Batch API jobs. The workflow reads
+`OPENAI_API_KEY` only from the environment; keys should never be written into commands,
+files, reports, or commits. `data/batch/` is ignored by git because it contains large
+request and result files.
+
+```bash
+citeevidence phase2 estimate-batch-cost \
+  --queue data/processed/phase1_llm_queue_high.parquet \
+  --queue data/processed/phase1_llm_queue_medium.parquet \
+  --model gpt-5.4-mini \
+  --out reports/phase2_batch_cost_estimate.md
+
+citeevidence phase2 prepare-batch \
+  --queue data/processed/phase1_llm_queue_high.parquet \
+  --queue data/processed/phase1_llm_queue_medium.parquet \
+  --model gpt-5.4-mini \
+  --out-jsonl data/batch/phase2_full_batch_requests.jsonl \
+  --manifest data/batch/phase2_full_batch_manifest.json \
+  --skip-enrichment
+
+citeevidence phase2 submit-batch \
+  --manifest data/batch/phase2_full_batch_manifest.json \
+  --status-out data/batch/phase2_full_batch_status.json
+
+citeevidence phase2 check-batch \
+  --manifest data/batch/phase2_full_batch_manifest.json \
+  --status-out data/batch/phase2_full_batch_status.json
+
+citeevidence phase2 collect-batch \
+  --manifest data/batch/phase2_full_batch_manifest.json \
+  --queue data/processed/phase1_llm_queue_high.parquet \
+  --queue data/processed/phase1_llm_queue_medium.parquet \
+  --out-labels data/processed/phase2_structured_labels_batch.parquet \
+  --out-failed data/processed/phase2_structured_labels_batch_failed.jsonl \
+  --report reports/phase2_batch_run_report.md
+```
+
+Before committing after any API work, run a local secret scan over staged text files:
+
+```bash
+git diff --cached --name-only | xargs grep -nE 'sk-(proj|[A-Za-z0-9])[-A-Za-z0-9_]{20,}' || true
+```
+
 Revalidate failed Phase-2 rows locally without calling the API:
 
 ```bash

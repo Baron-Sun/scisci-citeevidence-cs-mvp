@@ -87,6 +87,18 @@ KNOWN_SECTIONS = {
     "analysis",
     "error_analysis",
 }
+PSEUDO_OBJECT_NODE_NAMES = {
+    "unknown",
+    "method",
+    "model",
+    "metric",
+    "software_or_tool",
+    "dataset_or_database",
+    "benchmark_or_protocol",
+    "claim_or_finding",
+    "theory_or_concept",
+    "task",
+}
 
 
 def run_phase2_pilot_analysis(
@@ -1560,38 +1572,8 @@ def build_evidence_backed_object_graph(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Build strict Phase-2 object graph nodes and edges."""
     strict = _strict_phase2_labels(phase2)
-    graph_contexts = _ensure_columns(
-        object_graph[["context_id", "canonical_name", "object_type", "object_category"]].copy(),
-        ["context_id", "canonical_name", "object_type", "object_category"],
-    )
-    edges = strict.merge(graph_contexts, on="context_id", how="left")
-    edges = _ensure_columns(
-        edges,
-        [
-            "graph_candidate_object_names",
-            "object_names",
-            "object_types",
-            "final_object_type",
-            "phase2_confidence",
-        ],
-    )
-    edges["canonical_name"] = edges["canonical_name"].map(_clean)
-    fallback_name = edges["graph_candidate_object_names"].map(_first_semicolon).where(
-        edges["graph_candidate_object_names"].map(_clean).ne(""),
-        edges["object_names"].map(_first_semicolon),
-    )
-    edges["canonical_name"] = edges["canonical_name"].where(
-        edges["canonical_name"].ne(""),
-        fallback_name,
-    )
-    edges["canonical_name"] = edges["canonical_name"].where(
-        edges["canonical_name"].ne(""),
-        edges["final_object_type"].map(_clean),
-    )
-    edges["object_type"] = edges["object_type"].map(_clean).where(
-        edges["object_type"].map(_clean).ne(""),
-        edges["final_object_type"].map(_clean),
-    )
+    graph_contexts = _prepared_object_graph_contexts(object_graph)
+    edges = strict.merge(graph_contexts, on="context_id", how="inner")
     edge_columns = [
         "context_id",
         "canonical_name",
@@ -1922,6 +1904,51 @@ def _method_edge_by_object_type(edges: pd.DataFrame) -> pd.DataFrame:
         .reset_index(name="rows")
         .sort_values(["object_type", "rows"], ascending=[True, False])
     )
+
+
+def _prepared_object_graph_contexts(object_graph: pd.DataFrame) -> pd.DataFrame:
+    has_allow = "allow_in_object_graph" in object_graph.columns
+    has_graph_eligible = "graph_eligible" in object_graph.columns
+    columns = [
+        "context_id",
+        "canonical_name",
+        "object_type",
+        "object_category",
+        "confidence",
+        "matched_in",
+        "allow_in_object_graph",
+        "graph_eligible",
+    ]
+    graph = _ensure_columns(object_graph.copy(), columns)
+    graph["context_id"] = graph["context_id"].map(_clean)
+    graph["canonical_name"] = graph["canonical_name"].map(_clean)
+    graph["object_type"] = graph["object_type"].map(_clean)
+    graph["object_category"] = graph["object_category"].map(_clean)
+    graph = graph.loc[graph["context_id"].ne("") & graph["canonical_name"].ne("")]
+    graph = graph.loc[~graph["canonical_name"].str.casefold().isin(PSEUDO_OBJECT_NODE_NAMES)]
+    if has_allow:
+        graph = graph.loc[graph["allow_in_object_graph"].map(_bool_value)]
+    if has_graph_eligible:
+        graph = graph.loc[graph["graph_eligible"].map(_bool_value)]
+    graph["confidence"] = pd.to_numeric(graph["confidence"], errors="coerce").fillna(0)
+    graph["matched_in_priority"] = graph["matched_in"].map(_matched_in_priority)
+    graph = graph.sort_values(
+        ["context_id", "confidence", "matched_in_priority", "canonical_name"],
+        ascending=[True, False, False, True],
+    )
+    graph = graph.groupby("context_id", dropna=False).head(3)
+    return graph[["context_id", "canonical_name", "object_type", "object_category"]]
+
+
+def _matched_in_priority(value: Any) -> int:
+    text = _clean(value).casefold()
+    if "sentence" in text:
+        return 3
+    if "context_window" in text:
+        return 2
+    if "neighbor" in text:
+        return 1
+    return 0
 
 
 def _strict_vs_broad_rankings(nodes: pd.DataFrame, broad_ranking: pd.DataFrame) -> pd.DataFrame:

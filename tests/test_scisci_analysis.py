@@ -343,6 +343,63 @@ def test_strict_object_graph_excludes_abstain_and_unsupported_labels() -> None:
     )
 
 
+def test_object_graph_excludes_pseudo_nodes_and_missing_candidates() -> None:
+    extra_phase2 = pd.concat(
+        [
+            _phase2(),
+            pd.DataFrame(
+                [
+                    {
+                        **_phase2().iloc[0].to_dict(),
+                        "context_id": "ctx_pseudo",
+                        "sentence_text": "We use method directly.",
+                        "context_window_s3": "We use method directly.",
+                        "evidence_span_phase2": "use method directly",
+                        "graph_candidate_object_names": "method",
+                        "object_names": "method",
+                    },
+                    {
+                        **_phase2().iloc[0].to_dict(),
+                        "context_id": "ctx_missing",
+                        "sentence_text": "We use a real system.",
+                        "context_window_s3": "We use a real system.",
+                        "evidence_span_phase2": "use a real system",
+                        "graph_candidate_object_names": "",
+                        "object_names": "",
+                    },
+                ]
+            ),
+        ],
+        ignore_index=True,
+    )
+    extra_graph = pd.concat(
+        [
+            _object_graph(),
+            pd.DataFrame(
+                [
+                    {
+                        "context_id": "ctx_pseudo",
+                        "canonical_name": "method",
+                        "object_type": "method",
+                        "object_category": "named_object",
+                        "confidence": 1.0,
+                        "matched_in": "sentence_text",
+                        "allow_in_object_graph": True,
+                        "graph_eligible": True,
+                    }
+                ]
+            ),
+        ],
+        ignore_index=True,
+    )
+
+    _, edges = build_evidence_backed_object_graph(extra_phase2, extra_graph)
+
+    assert "method" not in set(edges["canonical_name"])
+    assert "ctx_pseudo" not in set(edges["context_id"])
+    assert "ctx_missing" not in set(edges["context_id"])
+
+
 def test_evidence_cards_include_grounded_spans() -> None:
     _, edges = build_evidence_backed_object_graph(_phase2(), _object_graph())
     cards = build_evidence_cards(edges)

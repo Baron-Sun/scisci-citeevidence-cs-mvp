@@ -6,6 +6,7 @@ import os
 import random
 import re
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
@@ -63,7 +64,28 @@ DEFAULT_PHASE2_FAILED_DIAGNOSTICS_REPORT = Path(
 DEFAULT_PHASE2_REVALIDATED_REPORT = Path(
     "reports/phase2_structured_extraction_pilot_revalidated_report.md"
 )
+DEFAULT_PHASE2_BATCH_DIR = Path("data/batch")
+DEFAULT_PHASE2_BATCH_REQUESTS_PATH = Path("data/batch/phase2_full_batch_requests.jsonl")
+DEFAULT_PHASE2_BATCH_MANIFEST_PATH = Path("data/batch/phase2_full_batch_manifest.json")
+DEFAULT_PHASE2_BATCH_STATUS_PATH = Path("data/batch/phase2_full_batch_status.json")
+DEFAULT_PHASE2_BATCH_COST_REPORT = Path("reports/phase2_batch_cost_estimate.md")
+DEFAULT_PHASE2_BATCH_LABELS_PATH = Path("data/processed/phase2_structured_labels_batch.parquet")
+DEFAULT_PHASE2_BATCH_FAILED_PATH = Path(
+    "data/processed/phase2_structured_labels_batch_failed.jsonl"
+)
+DEFAULT_PHASE2_BATCH_REPORT = Path("reports/phase2_batch_run_report.md")
 PHASE2_PROMPT_VERSION = "phase2_structured_extraction_v1"
+PHASE2_BATCH_ENDPOINT = "/v1/responses"
+PHASE2_BATCH_COMPLETION_WINDOW = "24h"
+PHASE2_BATCH_MAX_REQUESTS_PER_FILE = 50_000
+PHASE2_BATCH_MAX_BYTES_PER_FILE = 190_000_000
+PHASE2_BATCH_PRICE_PER_MILLION = {
+    "gpt-5.4-mini": {"input": 0.375, "output": 2.25},
+    "gpt-5.4": {"input": 1.25, "output": 7.50},
+    "gpt-4o-mini": {"input": 0.075, "output": 0.30},
+}
+PHASE2_PILOT_FALLBACK_INPUT_TOKENS_PER_ROW = 1007926 / 600
+PHASE2_PILOT_FALLBACK_OUTPUT_TOKENS_PER_ROW = 86880 / 600
 
 FINAL_INTENT = Literal[
     "background",
@@ -446,6 +468,774 @@ def run_phase2_structured_extraction(
     return metrics
 
 
+def estimate_phase2_batch_cost(
+    *,
+    queue_paths: list[str | Path],
+    out_report_path: str | Path = DEFAULT_PHASE2_BATCH_COST_REPORT,
+    model: str | None = None,
+    pilot_labels_path: str | Path | None = DEFAULT_PHASE2_REVALIDATED_PARQUET_PATH,
+    input_tokens_per_row: float | None = None,
+    output_tokens_per_row: float | None = None,
+) -> dict[str, Any]:
+    """Estimate Batch API token volume and configured model cost for Phase-2 queues."""
+    queue_files = [Path(path) for path in queue_paths]
+    for path in queue_files:
+        if not path.exists():
+            raise FileNotFoundError(f"Required queue input does not exist: {path}")
+    review_model = resolve_review_model(model)
+    row_counts = [
+        {"queue_path": str(path), "rows": _parquet_row_count(path)} for path in queue_files
+    ]
+    total_rows = int(sum(row["rows"] for row in row_counts))
+    pilot_average = _phase2_pilot_token_average(
+        Path(pilot_labels_path) if pilot_labels_path else None
+    )
+    input_average = (
+        float(input_tokens_per_row)
+        if input_tokens_per_row is not None
+        else pilot_average["input_tokens_per_row"]
+    )
+    output_average = (
+        float(output_tokens_per_row)
+        if output_tokens_per_row is not None
+        else pilot_average["output_tokens_per_row"]
+    )
+    estimated_input_tokens = int(round(total_rows * input_average))
+    estimated_output_tokens = int(round(total_rows * output_average))
+    price = PHASE2_BATCH_PRICE_PER_MILLION.get(review_model, {})
+    input_cost = (
+        estimated_input_tokens / 1_000_000 * float(price["input"])
+        if "input" in price
+        else None
+    )
+    output_cost = (
+        estimated_output_tokens / 1_000_000 * float(price["output"])
+        if "output" in price
+        else None
+    )
+    total_cost = (
+        float(input_cost) + float(output_cost)
+        if input_cost is not None and output_cost is not None
+        else None
+    )
+    metrics = {
+        "model": review_model,
+        "total_rows": total_rows,
+        "input_tokens_per_row": input_average,
+        "output_tokens_per_row": output_average,
+        "estimated_input_tokens": estimated_input_tokens,
+        "estimated_output_tokens": estimated_output_tokens,
+        "estimated_total_tokens": estimated_input_tokens + estimated_output_tokens,
+        "estimated_input_cost_usd": input_cost,
+        "estimated_output_cost_usd": output_cost,
+        "estimated_total_cost_usd": total_cost,
+        "queue_counts": row_counts,
+        "pricing_source": "local_batch_price_config",
+        "pilot_average_source": pilot_average["source"],
+    }
+    report_path = Path(out_report_path)
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(build_phase2_batch_cost_report(metrics), encoding="utf-8")
+    return metrics
+
+
+def prepare_phase2_batch_requests(
+    *,
+    queue_paths: list[str | Path],
+    out_jsonl_path: str | Path = DEFAULT_PHASE2_BATCH_REQUESTS_PATH,
+    manifest_path: str | Path = DEFAULT_PHASE2_BATCH_MANIFEST_PATH,
+    candidates_path: str | Path | None = DEFAULT_PHASE1_CANDIDATES_FULL_PATH,
+    contexts_path: str | Path | None = DEFAULT_PHASE1_CONTEXTS_PATH,
+    object_mentions_path: str | Path | None = DEFAULT_PHASE1_OBJECT_MENTIONS_PATH,
+    object_graph_candidates_path: str | Path | None = DEFAULT_PHASE1_OBJECT_GRAPH_CANDIDATES_PATH,
+    cited_title_profiles_path: str | Path | None = DEFAULT_PHASE1_CITED_TITLE_PROFILES_PATH,
+    model: str | None = None,
+    prompt_version: str = PHASE2_PROMPT_VERSION,
+    max_rows: int | None = None,
+    seed: int = 42,
+    max_requests_per_file: int = PHASE2_BATCH_MAX_REQUESTS_PER_FILE,
+    max_bytes_per_file: int = PHASE2_BATCH_MAX_BYTES_PER_FILE,
+) -> dict[str, Any]:
+    """Prepare chunked OpenAI Batch API JSONL request files for Phase-2 extraction."""
+    review_model = resolve_review_model(model)
+    phase2_queue = load_phase2_batch_queue(
+        queue_paths=queue_paths,
+        candidates_path=candidates_path,
+        contexts_path=contexts_path,
+        object_mentions_path=object_mentions_path,
+        object_graph_candidates_path=object_graph_candidates_path,
+        cited_title_profiles_path=cited_title_profiles_path,
+        model=review_model,
+        prompt_version=prompt_version,
+        max_rows=max_rows,
+        seed=seed,
+    )
+    request_files = write_phase2_batch_request_files(
+        phase2_queue,
+        out_jsonl_path=Path(out_jsonl_path),
+        model=review_model,
+        max_requests_per_file=max_requests_per_file,
+        max_bytes_per_file=max_bytes_per_file,
+    )
+    manifest = {
+        "created_at": _utc_now(),
+        "workflow": "phase2_batch_structured_extraction",
+        "endpoint": PHASE2_BATCH_ENDPOINT,
+        "completion_window": PHASE2_BATCH_COMPLETION_WINDOW,
+        "model": review_model,
+        "prompt_version": prompt_version,
+        "queue_paths": [str(path) for path in queue_paths],
+        "total_rows": int(len(phase2_queue)),
+        "max_rows": max_rows,
+        "max_requests_per_file": max_requests_per_file,
+        "max_bytes_per_file": max_bytes_per_file,
+        "request_files": request_files,
+        "submit_status": "not_submitted",
+    }
+    manifest_out = Path(manifest_path)
+    manifest_out.parent.mkdir(parents=True, exist_ok=True)
+    manifest_out.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    return manifest
+
+
+def submit_phase2_batch(
+    *,
+    manifest_path: str | Path = DEFAULT_PHASE2_BATCH_MANIFEST_PATH,
+    status_out_path: str | Path = DEFAULT_PHASE2_BATCH_STATUS_PATH,
+    client: Any | None = None,
+    dry_run: bool = False,
+    resubmit: bool = False,
+) -> dict[str, Any]:
+    """Upload prepared request files and submit OpenAI Batch jobs."""
+    manifest_file = Path(manifest_path)
+    manifest = _read_manifest(manifest_file)
+    if dry_run:
+        manifest["submit_status"] = "dry_run_not_submitted"
+        manifest["updated_at"] = _utc_now()
+        _write_manifest(manifest_file, manifest)
+        request_files = manifest.get("request_files", [])
+        status = {
+            "manifest_path": str(manifest_file),
+            "updated_at": manifest["updated_at"],
+            "total_request_files": len(request_files),
+            "status_distribution": _status_distribution(request_files),
+            "request_files": request_files,
+            "dry_run": True,
+        }
+        Path(status_out_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(status_out_path).write_text(json.dumps(status, indent=2), encoding="utf-8")
+        return status
+    batch_client = client or _openai_client_from_env()
+    for entry in manifest.get("request_files", []):
+        if entry.get("batch_id") and not resubmit:
+            continue
+        request_path = Path(entry["path"])
+        with request_path.open("rb") as handle:
+            uploaded = batch_client.files.create(file=handle, purpose="batch")
+        batch = batch_client.batches.create(
+            input_file_id=_model_attr(uploaded, "id"),
+            endpoint=manifest.get("endpoint", PHASE2_BATCH_ENDPOINT),
+            completion_window=manifest.get(
+                "completion_window",
+                PHASE2_BATCH_COMPLETION_WINDOW,
+            ),
+            metadata={
+                "workflow": "phase2_structured_extraction",
+                "request_file": request_path.name,
+                "prompt_version": manifest.get("prompt_version", PHASE2_PROMPT_VERSION),
+            },
+        )
+        entry["input_file_id"] = _model_attr(uploaded, "id")
+        entry["batch_id"] = _model_attr(batch, "id")
+        entry["status"] = _model_attr(batch, "status")
+        entry["submitted_at"] = _utc_now()
+    manifest["submit_status"] = "submitted"
+    manifest["updated_at"] = _utc_now()
+    _write_manifest(manifest_file, manifest)
+    status = check_phase2_batch_status(
+        manifest_path=manifest_file,
+        status_out_path=status_out_path,
+        client=batch_client,
+    )
+    return status
+
+
+def check_phase2_batch_status(
+    *,
+    manifest_path: str | Path = DEFAULT_PHASE2_BATCH_MANIFEST_PATH,
+    status_out_path: str | Path = DEFAULT_PHASE2_BATCH_STATUS_PATH,
+    client: Any | None = None,
+) -> dict[str, Any]:
+    """Refresh Batch API statuses in the manifest."""
+    manifest_file = Path(manifest_path)
+    manifest = _read_manifest(manifest_file)
+    batch_client = client or _openai_client_from_env()
+    statuses = []
+    for entry in manifest.get("request_files", []):
+        batch_id = entry.get("batch_id")
+        if not batch_id:
+            entry["status"] = entry.get("status") or "not_submitted"
+            statuses.append(dict(entry))
+            continue
+        batch = batch_client.batches.retrieve(batch_id)
+        batch_dict = _model_dump(batch)
+        entry["status"] = batch_dict.get("status", "")
+        entry["output_file_id"] = batch_dict.get("output_file_id")
+        entry["error_file_id"] = batch_dict.get("error_file_id")
+        entry["request_counts"] = batch_dict.get("request_counts")
+        entry["completed_at"] = batch_dict.get("completed_at")
+        entry["failed_at"] = batch_dict.get("failed_at")
+        entry["expires_at"] = batch_dict.get("expires_at")
+        statuses.append(dict(entry))
+    manifest["updated_at"] = _utc_now()
+    _write_manifest(manifest_file, manifest)
+    status = {
+        "manifest_path": str(manifest_file),
+        "updated_at": manifest["updated_at"],
+        "total_request_files": len(manifest.get("request_files", [])),
+        "status_distribution": _status_distribution(statuses),
+        "request_files": statuses,
+    }
+    status_out = Path(status_out_path)
+    status_out.parent.mkdir(parents=True, exist_ok=True)
+    status_out.write_text(json.dumps(status, indent=2), encoding="utf-8")
+    return status
+
+
+def collect_phase2_batch_results(
+    *,
+    manifest_path: str | Path = DEFAULT_PHASE2_BATCH_MANIFEST_PATH,
+    queue_paths: list[str | Path],
+    out_labels_path: str | Path = DEFAULT_PHASE2_BATCH_LABELS_PATH,
+    out_failed_path: str | Path = DEFAULT_PHASE2_BATCH_FAILED_PATH,
+    report_path: str | Path = DEFAULT_PHASE2_BATCH_REPORT,
+    client: Any | None = None,
+    redownload: bool = False,
+) -> dict[str, Any]:
+    """Download/parse completed Batch API outputs and validate Phase-2 labels locally."""
+    manifest = _read_manifest(Path(manifest_path))
+    batch_client = client
+    output_paths = _ensure_phase2_batch_output_files(
+        manifest=manifest,
+        manifest_path=Path(manifest_path),
+        client=batch_client,
+        redownload=redownload,
+    )
+    queue = load_phase2_batch_queue(
+        queue_paths=queue_paths,
+        candidates_path=None,
+        contexts_path=None,
+        object_mentions_path=None,
+        object_graph_candidates_path=None,
+        cited_title_profiles_path=None,
+        model=manifest.get("model", DEFAULT_OPENAI_REVIEW_MODEL),
+        prompt_version=manifest.get("prompt_version", PHASE2_PROMPT_VERSION),
+        max_rows=manifest.get("max_rows"),
+    )
+    queue_by_custom_id = {
+        phase2_batch_custom_id(row): row for row in queue.to_dict(orient="records")
+    }
+    result_records: list[dict[str, Any]] = []
+    failed_records: list[dict[str, Any]] = []
+    for output_path in output_paths:
+        batch_id = output_path.get("batch_id", "")
+        for line in Path(output_path["path"]).read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            record, failed = parse_phase2_batch_output_line(
+                line,
+                queue_by_custom_id=queue_by_custom_id,
+                model=manifest.get("model", DEFAULT_OPENAI_REVIEW_MODEL),
+                batch_id=batch_id,
+            )
+            if record is not None:
+                result_records.append(record)
+            if failed is not None:
+                failed_records.append(failed)
+    results = _normalize_phase2_result_frame(pd.DataFrame(result_records))
+    failed = pd.DataFrame(failed_records)
+    labels_out = Path(out_labels_path)
+    failed_out = Path(out_failed_path)
+    report_out = Path(report_path)
+    for output in (labels_out, failed_out, report_out):
+        output.parent.mkdir(parents=True, exist_ok=True)
+    results.to_parquet(labels_out, index=False)
+    _write_jsonl(failed_out, failed_records)
+    failed = _ensure_columns(failed, PHASE2_FAILED_COLUMNS)
+    metrics = build_phase2_metrics(
+        queue=queue,
+        results=results,
+        failed=failed,
+        dry_run=False,
+        dry_run_prompt_records=0,
+    )
+    metrics["batch_output_files"] = output_paths
+    report_out.write_text(
+        build_phase2_batch_run_report(
+            metrics=metrics,
+            labels_out=labels_out,
+            failed_out=failed_out,
+            manifest_path=Path(manifest_path),
+        ),
+        encoding="utf-8",
+    )
+    return metrics
+
+
+def load_phase2_batch_queue(
+    *,
+    queue_paths: list[str | Path],
+    candidates_path: str | Path | None,
+    contexts_path: str | Path | None,
+    object_mentions_path: str | Path | None,
+    object_graph_candidates_path: str | Path | None,
+    cited_title_profiles_path: str | Path | None,
+    model: str,
+    prompt_version: str,
+    max_rows: int | None = None,
+    seed: int = 42,
+) -> pd.DataFrame:
+    """Load one or more Phase-1 LLM queues and enrich them for Phase-2 prompts."""
+    frames = []
+    for path in queue_paths:
+        queue_path = Path(path)
+        if not queue_path.exists():
+            raise FileNotFoundError(f"Required queue input does not exist: {queue_path}")
+        frames.append(_read_parquet_with_columns(queue_path, _queue_columns()))
+    queue = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    queue = queue.drop_duplicates(subset=["context_id"], keep="first")
+    if max_rows is not None:
+        queue = queue.head(max_rows)
+    candidates = _read_optional_phase2_table(candidates_path, _candidate_fill_columns())
+    contexts = _read_optional_phase2_table(contexts_path, _context_fill_columns())
+    object_mentions = _read_optional_phase2_table(object_mentions_path, _object_fill_columns())
+    object_graph_candidates = _read_optional_phase2_table(
+        object_graph_candidates_path,
+        _object_fill_columns(),
+    )
+    cited_title_profiles = _read_optional_phase2_table(
+        cited_title_profiles_path,
+        _object_fill_columns(),
+    )
+    prepared = build_phase2_input_queue(
+        queue=queue,
+        candidates=candidates,
+        contexts=contexts,
+        object_mentions=object_mentions,
+        object_graph_candidates=object_graph_candidates,
+        cited_title_profiles=cited_title_profiles,
+        limit=None,
+        seed=seed,
+        model=model,
+    )
+    prepared["prompt_version"] = prompt_version
+    prepared["model"] = model
+    prepared["cache_key"] = prepared.apply(
+        lambda row: phase2_structured_cache_key(row.to_dict()),
+        axis=1,
+    )
+    prepared["sample_row_id"] = [
+        f"phase2_batch_{index:06d}" for index in range(1, len(prepared) + 1)
+    ]
+    return _ensure_columns(prepared, PHASE2_INPUT_COLUMNS)[PHASE2_INPUT_COLUMNS]
+
+
+def write_phase2_batch_request_files(
+    phase2_queue: pd.DataFrame,
+    *,
+    out_jsonl_path: Path,
+    model: str,
+    max_requests_per_file: int = PHASE2_BATCH_MAX_REQUESTS_PER_FILE,
+    max_bytes_per_file: int = PHASE2_BATCH_MAX_BYTES_PER_FILE,
+) -> list[dict[str, Any]]:
+    """Write OpenAI Batch API JSONL request files, splitting by API limits."""
+    out_jsonl_path.parent.mkdir(parents=True, exist_ok=True)
+    _remove_existing_batch_request_parts(out_jsonl_path)
+    request_files: list[dict[str, Any]] = []
+    chunk_index = 1
+    current_path = _batch_request_part_path(out_jsonl_path, chunk_index)
+    handle = current_path.open("w", encoding="utf-8")
+    current_rows = 0
+    current_bytes = 0
+    sha = hashlib.sha256()
+
+    def close_current() -> None:
+        nonlocal handle, current_rows, current_bytes, sha
+        handle.close()
+        if current_rows == 0:
+            current_path.unlink(missing_ok=True)
+            return
+        request_files.append(
+            {
+                "path": str(current_path),
+                "rows": current_rows,
+                "bytes": current_bytes,
+                "sha256": sha.hexdigest(),
+                "status": "prepared",
+            }
+        )
+
+    for row in phase2_queue.to_dict(orient="records"):
+        request = build_phase2_batch_request(row, model=model)
+        encoded = (json.dumps(request, ensure_ascii=False) + "\n").encode("utf-8")
+        if len(encoded) > max_bytes_per_file:
+            raise ValueError(f"One request exceeds max_bytes_per_file: {len(encoded)}")
+        should_split = current_rows > 0 and (
+            current_rows >= max_requests_per_file
+            or current_bytes + len(encoded) > max_bytes_per_file
+        )
+        if should_split:
+            close_current()
+            chunk_index += 1
+            current_path = _batch_request_part_path(out_jsonl_path, chunk_index)
+            handle = current_path.open("w", encoding="utf-8")
+            current_rows = 0
+            current_bytes = 0
+            sha = hashlib.sha256()
+        handle.write(encoded.decode("utf-8"))
+        sha.update(encoded)
+        current_rows += 1
+        current_bytes += len(encoded)
+    close_current()
+    return request_files
+
+
+def build_phase2_batch_request(row: dict[str, Any], *, model: str) -> dict[str, Any]:
+    """Build one OpenAI Batch API request for the Responses endpoint."""
+    system_prompt, user_prompt = build_phase2_batch_prompt(row)
+    return {
+        "custom_id": phase2_batch_custom_id(row),
+        "method": "POST",
+        "url": PHASE2_BATCH_ENDPOINT,
+        "body": {
+            "model": model,
+            "input": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "text": {
+                "format": {
+                    "type": "json_schema",
+                    "name": "phase2_structured_label",
+                    "schema": phase2_structured_label_json_schema(),
+                    "strict": True,
+                }
+            },
+            "max_output_tokens": 500,
+        },
+    }
+
+
+def build_phase2_batch_prompt(row: dict[str, Any]) -> tuple[str, str]:
+    """Build a compact prompt for large-scale Batch API requests."""
+    system_prompt = (
+        "You label citation function evidence for NLP/Computational Linguistics papers. "
+        "Return only JSON matching the provided schema. Use only sentence_text and "
+        "context_window_s3 as evidence."
+    )
+    payload = {
+        "task": "Phase-2 structured citation-function evidence extraction",
+        "prompt_version": row.get("prompt_version", PHASE2_PROMPT_VERSION),
+        "rules": [
+            "Do not assign a strong label without an exact evidence substring.",
+            "cited_title identifies the cited work but is not evidence.",
+            "background: prior work context only.",
+            (
+                "uses: current paper directly uses/employs a method, data, software, "
+                "metric, or component."
+            ),
+            "compares_against: baseline, versus, outperform, compare, benchmark language.",
+            "extends: current paper extends/adapts/improves/modifies/builds on cited work.",
+            "critiques: explicit limitation, failure, drawback, inability, poor performance.",
+            "applies: current paper applies a method/resource to a task/domain.",
+            "Abstain if grouped or ambiguous evidence prevents a grounded label.",
+        ],
+        "candidate": _batch_prompt_row_payload(row),
+    }
+    return system_prompt, json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+
+
+def phase2_batch_custom_id(row: dict[str, Any]) -> str:
+    """Deterministic Batch API custom_id for one Phase-2 request."""
+    prompt_version = _clean(row.get("prompt_version")) or PHASE2_PROMPT_VERSION
+    return f"phase2:{_clean(row.get('context_id'))}:{prompt_version}"
+
+
+def phase2_structured_label_json_schema() -> dict[str, Any]:
+    """Strict JSON schema for Batch API structured outputs."""
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "final_intent": {
+                "type": "string",
+                "enum": [
+                    "background",
+                    "uses",
+                    "compares_against",
+                    "extends",
+                    "critiques",
+                    "applies",
+                    "unclear",
+                ],
+            },
+            "final_object_type": {
+                "type": "string",
+                "enum": [
+                    "method",
+                    "model",
+                    "dataset_or_database",
+                    "software_or_tool",
+                    "benchmark_or_protocol",
+                    "metric",
+                    "task",
+                    "theory_or_concept",
+                    "claim_or_finding",
+                    "unknown",
+                ],
+            },
+            "final_relation_subtype": {
+                "type": "string",
+                "enum": [
+                    "direct_use",
+                    "adapt_to_domain",
+                    "combine_with",
+                    "compare_against",
+                    "critique_limitation",
+                    "improve",
+                    "replace",
+                    "component_use",
+                    "evaluate_on",
+                    "report_metric",
+                    "none",
+                ],
+            },
+            "method_edge_type": {
+                "type": "string",
+                "enum": [
+                    "extends",
+                    "improves",
+                    "replaces",
+                    "adapts",
+                    "uses_component",
+                    "compares",
+                    "background",
+                    "not_method_related",
+                ],
+            },
+            "stance": {
+                "type": "string",
+                "enum": ["neutral", "positive", "negative", "mixed", "unclear"],
+            },
+            "evidence_span": {"type": "string"},
+            "problem_or_motivation_quote": {"type": ["string", "null"]},
+            "usage_or_mechanism_quote": {"type": ["string", "null"]},
+            "comparison_or_tradeoff_quote": {"type": ["string", "null"]},
+            "evidence_supports_label": {
+                "type": "string",
+                "enum": ["true", "false", "unclear"],
+            },
+            "abstain": {"type": "boolean"},
+            "abstain_reason": {
+                "type": ["string", "null"],
+                "enum": [
+                    "insufficient_evidence",
+                    "ambiguous_context",
+                    "grouped_citation",
+                    "wrong_phase1_candidate",
+                    "no_relevant_function",
+                    "other",
+                    "null",
+                    None,
+                ],
+            },
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+            "rationale_short": {"type": "string"},
+        },
+        "required": [
+            "final_intent",
+            "final_object_type",
+            "final_relation_subtype",
+            "method_edge_type",
+            "stance",
+            "evidence_span",
+            "problem_or_motivation_quote",
+            "usage_or_mechanism_quote",
+            "comparison_or_tradeoff_quote",
+            "evidence_supports_label",
+            "abstain",
+            "abstain_reason",
+            "confidence",
+            "rationale_short",
+        ],
+    }
+
+
+def parse_phase2_batch_output_line(
+    line: str,
+    *,
+    queue_by_custom_id: dict[str, dict[str, Any]],
+    model: str,
+    batch_id: str = "",
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Parse and locally validate one OpenAI Batch API output line."""
+    payload = json.loads(line)
+    custom_id = _clean(payload.get("custom_id"))
+    row = queue_by_custom_id.get(custom_id)
+    if row is None:
+        row = {"context_id": _context_id_from_custom_id(custom_id)}
+    response = payload.get("response") or {}
+    status_code = response.get("status_code")
+    body = response.get("body") or {}
+    raw_response = ""
+    if status_code is not None and int(status_code) >= 400:
+        error = response.get("error") or body.get("error") or payload.get("error") or {}
+        return None, _phase2_failed_record(
+            row=row,
+            model=model,
+            validation_error=f"batch_response_status_{status_code}: {_clean(error)}",
+            raw_response=json.dumps(error, ensure_ascii=False),
+            attempts=1,
+        )
+    try:
+        raw_response = _extract_batch_response_text(body)
+        decision = Phase2StructuredLabel.model_validate_json(raw_response)
+        validate_phase2_decision(decision, row)
+        record = _phase2_result_record_from_decision(
+            row=row,
+            decision=decision,
+            review_status="batch_structured_extracted",
+            validation_error="",
+            attempts=1,
+            from_cache=False,
+            model_used=model,
+            usage=_batch_usage_to_dict(body.get("usage")),
+        )
+        record["batch_custom_id"] = custom_id
+        record["batch_id"] = batch_id
+        record["response_id"] = _clean(body.get("id"))
+        return record, None
+    except (ValidationError, ValueError, json.JSONDecodeError) as exc:
+        failed = _phase2_failed_record(
+            row=row,
+            model=model,
+            validation_error=str(exc),
+            raw_response=raw_response,
+            attempts=1,
+        )
+        failed["batch_custom_id"] = custom_id
+        failed["batch_id"] = batch_id
+        return None, failed
+
+
+def build_phase2_batch_cost_report(metrics: dict[str, Any]) -> str:
+    cost_rows = [
+        {"metric": "model", "value": metrics["model"]},
+        {"metric": "total_rows", "value": metrics["total_rows"]},
+        {
+            "metric": "input_tokens_per_row",
+            "value": f"{metrics['input_tokens_per_row']:.2f}",
+        },
+        {
+            "metric": "output_tokens_per_row",
+            "value": f"{metrics['output_tokens_per_row']:.2f}",
+        },
+        {"metric": "estimated_input_tokens", "value": metrics["estimated_input_tokens"]},
+        {"metric": "estimated_output_tokens", "value": metrics["estimated_output_tokens"]},
+        {"metric": "estimated_total_tokens", "value": metrics["estimated_total_tokens"]},
+        {
+            "metric": "estimated_input_cost_usd",
+            "value": _format_optional_cost(metrics["estimated_input_cost_usd"]),
+        },
+        {
+            "metric": "estimated_output_cost_usd",
+            "value": _format_optional_cost(metrics["estimated_output_cost_usd"]),
+        },
+        {
+            "metric": "estimated_total_cost_usd",
+            "value": _format_optional_cost(metrics["estimated_total_cost_usd"]),
+        },
+        {"metric": "pilot_average_source", "value": metrics["pilot_average_source"]},
+        {"metric": "pricing_source", "value": metrics["pricing_source"]},
+    ]
+    return "\n".join(
+        [
+            "# Phase-2 Batch Cost Estimate",
+            "",
+            "This estimate uses local configured Batch prices and observed pilot token "
+            "averages when available. It does not call the OpenAI API.",
+            "",
+            "## Queue Counts",
+            _table(pd.DataFrame(metrics["queue_counts"])),
+            "",
+            "## Estimate",
+            _table(pd.DataFrame(cost_rows)),
+            "",
+        ]
+    )
+
+
+def build_phase2_batch_run_report(
+    *,
+    metrics: dict[str, Any],
+    labels_out: Path,
+    failed_out: Path,
+    manifest_path: Path,
+) -> str:
+    core = pd.DataFrame(
+        [
+            {"metric": "total_queue_rows", "value": metrics["total_queue_rows"]},
+            {"metric": "processed_rows", "value": metrics["processed_rows"]},
+            {"metric": "successful_rows", "value": metrics["successful_rows"]},
+            {"metric": "failed_rows", "value": metrics["failed_rows"]},
+            {"metric": "abstain_count", "value": metrics["abstain_count"]},
+            {"metric": "abstain_rate", "value": f"{metrics['abstain_rate']:.3f}"},
+            {
+                "metric": "phase1_phase2_disagreement_rate",
+                "value": f"{metrics['phase1_phase2_disagreement_rate']:.3f}",
+            },
+            {"metric": "input_tokens", "value": metrics["token_usage"]["input_tokens"]},
+            {"metric": "output_tokens", "value": metrics["token_usage"]["output_tokens"]},
+            {"metric": "total_tokens", "value": metrics["token_usage"]["total_tokens"]},
+        ]
+    )
+    return "\n".join(
+        [
+            "# Phase-2 Batch Structured Evidence Extraction Report",
+            "",
+            "Batch outputs are parsed and revalidated locally with the same Phase-2 "
+            "evidence-span and cue validators used by the pilot workflow.",
+            "",
+            "## Outputs",
+            f"- Manifest: `{manifest_path}`",
+            f"- Valid labels parquet: `{labels_out}`",
+            f"- Failed rows JSONL: `{failed_out}`",
+            "",
+            "## Core Metrics",
+            _table(core),
+            "",
+            "## Batch Output Files",
+            _table(pd.DataFrame(metrics.get("batch_output_files", []))),
+            "",
+            "## Final Intent Distribution",
+            _table(metrics["final_intent_distribution"]),
+            "",
+            "## Final Object Type Distribution",
+            _table(metrics["final_object_type_distribution"]),
+            "",
+            "## Evidence Supports Label Distribution",
+            _table(metrics["evidence_supports_label_distribution"]),
+            "",
+            "## Final Intent By Phase-1 Primary Candidate Intent",
+            _table(metrics["final_intent_by_phase1_intent"]),
+            "",
+            "## Failed Row Note",
+            "Failed rows are kept in JSONL for local revalidation or targeted retry.",
+            "",
+        ]
+    )
+
+
 def revalidate_phase2_failed_rows(
     *,
     labels_path: str | Path = DEFAULT_PHASE2_STRUCTURED_PARQUET_PATH,
@@ -674,7 +1464,7 @@ def build_phase2_input_queue(
     object_mentions: pd.DataFrame | None = None,
     object_graph_candidates: pd.DataFrame | None = None,
     cited_title_profiles: pd.DataFrame | None = None,
-    limit: int = 600,
+    limit: int | None = 600,
     seed: int = 42,
     model: str = DEFAULT_OPENAI_REVIEW_MODEL,
 ) -> pd.DataFrame:
@@ -688,9 +1478,12 @@ def build_phase2_input_queue(
         object_graph_candidates=object_graph_candidates,
         cited_title_profiles=cited_title_profiles,
     )
-    if len(prepared) > limit:
+    if limit is not None and len(prepared) > limit:
         prepared = prepared.sample(n=limit, random_state=seed).sort_values("context_id")
-    prepared = prepared.drop_duplicates(subset=["context_id"], keep="first").head(limit).copy()
+    prepared = prepared.drop_duplicates(subset=["context_id"], keep="first")
+    if limit is not None:
+        prepared = prepared.head(limit)
+    prepared = prepared.copy()
     prepared["prompt_version"] = PHASE2_PROMPT_VERSION
     prepared["model"] = model
     prepared["cache_key"] = prepared.apply(
@@ -1678,6 +2471,214 @@ def _write_jsonl(path: Path, records: list[dict[str, Any]]) -> None:
     with path.open("w", encoding="utf-8") as handle:
         for record in records:
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def _parquet_row_count(path: Path) -> int:
+    return int(pq.ParquetFile(path).metadata.num_rows)
+
+
+def _phase2_pilot_token_average(labels_path: Path | None) -> dict[str, Any]:
+    if labels_path is not None and labels_path.exists():
+        labels = _read_parquet_with_columns(labels_path, ["input_tokens", "output_tokens"])
+        input_tokens = pd.to_numeric(labels["input_tokens"], errors="coerce").dropna()
+        output_tokens = pd.to_numeric(labels["output_tokens"], errors="coerce").dropna()
+        if len(input_tokens) > 0 and len(output_tokens) > 0:
+            return {
+                "input_tokens_per_row": float(input_tokens.mean()),
+                "output_tokens_per_row": float(output_tokens.mean()),
+                "source": str(labels_path),
+            }
+    return {
+        "input_tokens_per_row": PHASE2_PILOT_FALLBACK_INPUT_TOKENS_PER_ROW,
+        "output_tokens_per_row": PHASE2_PILOT_FALLBACK_OUTPUT_TOKENS_PER_ROW,
+        "source": "phase2_pilot_fallback_constants",
+    }
+
+
+def _utc_now() -> str:
+    return datetime.now(UTC).isoformat()
+
+
+def _read_manifest(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        raise FileNotFoundError(f"Batch manifest does not exist: {path}")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _write_manifest(path: Path, manifest: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+
+def _openai_client_from_env() -> Any:
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY is required for submit/check/collect download")
+    from openai import OpenAI
+
+    return OpenAI(api_key=api_key)
+
+
+def _model_attr(value: Any, name: str) -> Any:
+    if isinstance(value, dict):
+        return value.get(name)
+    return getattr(value, name, None)
+
+
+def _model_dump(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if hasattr(value, "model_dump"):
+        return value.model_dump()
+    if hasattr(value, "to_dict"):
+        return value.to_dict()
+    return {name: getattr(value, name) for name in dir(value) if not name.startswith("_")}
+
+
+def _status_distribution(entries: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for entry in entries:
+        status = _clean(entry.get("status")) or "unknown"
+        counts[status] = counts.get(status, 0) + 1
+    return counts
+
+
+def _ensure_phase2_batch_output_files(
+    *,
+    manifest: dict[str, Any],
+    manifest_path: Path,
+    client: Any | None,
+    redownload: bool,
+) -> list[dict[str, Any]]:
+    output_entries = []
+    batch_client = client
+    for entry in manifest.get("request_files", []):
+        batch_id = _clean(entry.get("batch_id"))
+        output_path = _clean(entry.get("output_path"))
+        if output_path and Path(output_path).exists() and not redownload:
+            output_entries.append({"batch_id": batch_id, "path": output_path})
+            continue
+        output_file_id = _clean(entry.get("output_file_id"))
+        if not output_file_id and batch_id:
+            batch_client = batch_client or _openai_client_from_env()
+            batch = _model_dump(batch_client.batches.retrieve(batch_id))
+            output_file_id = _clean(batch.get("output_file_id"))
+            entry["status"] = _clean(batch.get("status"))
+            entry["output_file_id"] = output_file_id
+            entry["error_file_id"] = _clean(batch.get("error_file_id"))
+        if not output_file_id:
+            raise ValueError(f"Batch {batch_id or entry.get('path')} has no output_file_id")
+        batch_client = batch_client or _openai_client_from_env()
+        response = batch_client.files.content(output_file_id)
+        output_dir = manifest_path.parent
+        local_output = output_dir / f"{batch_id or output_file_id}.output.jsonl"
+        if hasattr(response, "write_to_file"):
+            response.write_to_file(local_output)
+        else:
+            content = getattr(response, "content", response)
+            if isinstance(content, str):
+                local_output.write_text(content, encoding="utf-8")
+            else:
+                local_output.write_bytes(bytes(content))
+        entry["output_path"] = str(local_output)
+        output_entries.append({"batch_id": batch_id, "path": str(local_output)})
+    _write_manifest(manifest_path, manifest)
+    return output_entries
+
+
+def _read_optional_phase2_table(path: str | Path | None, columns: list[str]) -> pd.DataFrame:
+    if path is None:
+        return pd.DataFrame(columns=columns)
+    table_path = Path(path)
+    if not table_path.exists():
+        return pd.DataFrame(columns=columns)
+    return _read_parquet_with_columns(table_path, columns)
+
+
+def _remove_existing_batch_request_parts(out_jsonl_path: Path) -> None:
+    out_jsonl_path.unlink(missing_ok=True)
+    pattern = f"{out_jsonl_path.stem}.part*.jsonl"
+    for path in out_jsonl_path.parent.glob(pattern):
+        path.unlink(missing_ok=True)
+
+
+def _batch_request_part_path(out_jsonl_path: Path, chunk_index: int) -> Path:
+    if chunk_index == 1:
+        return out_jsonl_path
+    return out_jsonl_path.with_name(f"{out_jsonl_path.stem}.part{chunk_index:04d}.jsonl")
+
+
+def _batch_prompt_row_payload(row: dict[str, Any]) -> dict[str, Any]:
+    columns = [
+        "context_id",
+        "resolved_cited_title",
+        "resolved_cited_year",
+        "resolved_cited_authors",
+        "normalized_section",
+        "citation_marker",
+        "sentence_text",
+        "context_window_s3",
+        "object_names",
+        "object_types",
+        "graph_candidate_object_names",
+        "generic_metric_names",
+        "cited_title_profile_object_names",
+        "primary_candidate_intent",
+        "candidate_intents",
+        "primary_candidate_object_type",
+        "object_type_source",
+        "object_type_confidence",
+        "candidate_relation_subtypes",
+        "evidence_span",
+        "confidence",
+        "llm_priority",
+        "llm_reason",
+        "phase2_candidate_type",
+        "cited_work_description",
+        "phase1_reason",
+        "matched_rules",
+    ]
+    return {column: _clean(row.get(column)) for column in columns}
+
+
+def _context_id_from_custom_id(custom_id: str) -> str:
+    parts = custom_id.split(":")
+    return parts[1] if len(parts) >= 3 and parts[0] == "phase2" else custom_id
+
+
+def _extract_batch_response_text(body: dict[str, Any]) -> str:
+    output_text = _clean(body.get("output_text"))
+    if output_text:
+        return output_text
+    if "choices" in body:
+        choices = body.get("choices") or []
+        if choices:
+            message = choices[0].get("message") or {}
+            content = message.get("content")
+            if isinstance(content, str):
+                return content
+    for item in body.get("output") or []:
+        for content in item.get("content") or []:
+            text = content.get("text")
+            if isinstance(text, str) and text.strip():
+                return text
+    raise ValueError("Batch response body does not contain output text")
+
+
+def _batch_usage_to_dict(usage: Any) -> dict[str, int | None]:
+    if not isinstance(usage, dict):
+        return _usage_to_dict(usage)
+    return {
+        "input_tokens": usage.get("input_tokens") or usage.get("prompt_tokens"),
+        "output_tokens": usage.get("output_tokens") or usage.get("completion_tokens"),
+        "total_tokens": usage.get("total_tokens"),
+    }
+
+
+def _format_optional_cost(value: Any) -> str:
+    if value is None or pd.isna(value):
+        return "unknown_model_price"
+    return f"${float(value):.2f}"
 
 
 def _read_parquet_with_columns(path: Path, columns: list[str]) -> pd.DataFrame:
