@@ -17,9 +17,21 @@ Active course MVP pipeline. Implemented pieces include:
 - author-year marker resolution pilot and full section-aware resolution against the aligned graph
 - context quality, ID mapping, full-citations coverage, and section-normalization audit reports
 - manual resolution review ingestion
-- seed NLP object registry and sample object mention matching
+- full analysis-ready strong citation contexts
+- seed NLP object registry and full object mention matching
+- object matching LLM-as-judge audit and review-policy application
+- full Phase-1 citation-function screening and LLM queue construction
+- Phase-1 LLM-as-judge audit
+- Phase-2 LLM structured evidence extraction pilot
+- Phase-2 failed-row diagnostics and conservative local revalidation
+- Phase-2 pilot analysis report, case-study tables, and reproducible figures
 
-Citation-function labeling, LLM evidence extraction, and final aggregation are not implemented yet.
+The current Phase-2 pilot has 582 valid model-assisted structured evidence labels and 18 remaining failed rows after revalidation. Phase-2 labels are evidence-grounded, schema-validated LLM-assisted labels; they are not human gold annotations.
+
+Not yet complete:
+
+- final aggregation and object-use graph analysis
+- course report and slides
 
 ## Requirements
 
@@ -114,14 +126,103 @@ citeevidence contexts audit-final-resolved \
 citeevidence objects match \
   --contexts data/processed/analysis_ready_strong_contexts.parquet \
   --registry configs/object_registry_seed.yaml \
-  --out data/processed/object_mentions_sample_refined.parquet \
-  --cited-title-profiles data/processed/cited_title_object_profiles_sample.parquet \
+  --out data/processed/object_mentions.parquet \
+  --cited-title-profiles data/processed/cited_title_object_profiles.parquet \
+  --object-graph-candidates data/processed/object_graph_candidate_mentions.parquet \
+  --strict-object-graph-candidates data/processed/object_graph_candidate_mentions_strict.parquet \
+  --broad-object-graph-candidates data/processed/object_graph_candidate_mentions_broad.parquet \
   --review-sample data/processed/object_mentions_review_sample.csv \
-  --report reports/object_matching_sample_refined_report.md \
-  --limit 50000
+  --report reports/object_matching_report.md
 ```
 
 `citeevidence contexts extract` also defaults to no bibliography. Use `--use-bibliography --references PATH` only with a true local bibliography table. The current `data/interim/acl_references.parquet` is kept for backward compatibility, but it is not authoritative for ACL-OCL citation attribution.
+
+Run full Phase-1 citation-function screening:
+
+```bash
+citeevidence phase1 screen \
+  --contexts data/processed/analysis_ready_strong_contexts.parquet \
+  --object-mentions data/processed/object_mentions.parquet \
+  --object-graph-candidates data/processed/object_graph_candidate_mentions.parquet \
+  --cited-title-profiles data/processed/cited_title_object_profiles.parquet \
+  --out-candidates data/processed/phase1_citation_function_candidates.parquet \
+  --out-features data/processed/phase1_context_features.parquet \
+  --out-llm-high data/processed/phase1_llm_queue_high.parquet \
+  --out-llm-medium data/processed/phase1_llm_queue_medium.parquet \
+  --out-llm-sample data/processed/phase1_llm_queue_sample.parquet \
+  --report reports/phase1_citation_function_screening_report.md \
+  --refined-rules-v2
+```
+
+Omit `--limit` for the full run.
+
+For Phase-2, generate prompts without API calls first:
+
+```bash
+citeevidence phase2 extract-structured \
+  --queue data/processed/phase1_llm_queue_sample.parquet \
+  --candidates data/processed/phase1_citation_function_candidates.parquet \
+  --features data/processed/phase1_context_features.parquet \
+  --contexts data/processed/analysis_ready_strong_contexts.parquet \
+  --object-mentions data/processed/object_mentions.parquet \
+  --object-graph-candidates data/processed/object_graph_candidate_mentions.parquet \
+  --cited-title-profiles data/processed/cited_title_object_profiles.parquet \
+  --dry-run
+```
+
+Run the Phase-2 live pilot only with `OPENAI_API_KEY` set in the environment:
+
+```bash
+citeevidence phase2 extract-structured \
+  --queue data/processed/phase1_llm_queue_sample.parquet \
+  --candidates data/processed/phase1_citation_function_candidates.parquet \
+  --features data/processed/phase1_context_features.parquet \
+  --contexts data/processed/analysis_ready_strong_contexts.parquet \
+  --object-mentions data/processed/object_mentions.parquet \
+  --object-graph-candidates data/processed/object_graph_candidate_mentions.parquet \
+  --cited-title-profiles data/processed/cited_title_object_profiles.parquet \
+  --limit 600
+```
+
+Revalidate failed Phase-2 rows locally without calling the API:
+
+```bash
+citeevidence phase2 revalidate-failed \
+  --labels data/processed/phase2_structured_labels_pilot.parquet \
+  --failed data/processed/phase2_structured_labels_failed.jsonl \
+  --queue data/processed/phase1_llm_queue_sample.parquet \
+  --out-labels data/processed/phase2_structured_labels_pilot_revalidated.parquet \
+  --out-failed data/processed/phase2_structured_labels_failed_after_revalidation.jsonl \
+  --diagnostics data/processed/phase2_failed_validation_diagnostics.parquet \
+  --diagnostics-report reports/phase2_failed_validation_diagnostics.md \
+  --report reports/phase2_structured_extraction_pilot_revalidated_report.md
+```
+
+Generate the Phase-2 pilot analysis report, figures, case studies, and figure source data:
+
+```bash
+citeevidence analysis phase2-pilot \
+  --labels data/processed/phase2_structured_labels_pilot_revalidated.parquet \
+  --failed-diagnostics data/processed/phase2_failed_validation_diagnostics.parquet \
+  --failed-jsonl data/processed/phase2_structured_labels_failed_after_revalidation.jsonl \
+  --out-report reports/phase2_pilot_analysis_report.md \
+  --out-summary data/processed/phase2_pilot_analysis_summary.csv \
+  --out-case-studies data/processed/phase2_case_studies.csv \
+  --out-confusion data/processed/phase2_phase1_vs_phase2_confusion.csv \
+  --figures-dir figures \
+  --source-data-dir figures/source_data
+```
+
+## Current Key Outputs
+
+- `data/processed/analysis_ready_strong_contexts.parquet`
+- `data/processed/object_mentions.parquet`
+- `data/processed/object_graph_candidate_mentions.parquet`
+- `data/processed/phase1_citation_function_candidates.parquet`
+- `data/processed/phase1_llm_queue_sample.parquet`
+- `data/processed/phase2_structured_labels_pilot_revalidated.parquet`
+- `reports/phase2_structured_extraction_pilot_revalidated_report.md`
+- `reports/phase2_pilot_analysis_report.md`
 
 ## Project Layout
 
@@ -144,4 +245,4 @@ Do not assign strong citation-function labels without citation context evidence 
 
 ## Safety
 
-Do not commit raw PDFs, full corpora, XML dumps, API keys, local absolute paths, or large generated files. The repository commits code and bounded markdown reports; raw corpora and large generated Parquet outputs stay local.
+Do not commit raw PDFs, full corpora, XML dumps, API keys, local absolute paths, or large generated files. The repository commits code, bounded reports, and selected bounded derived outputs needed for audit; raw corpora and large local Parquet outputs stay local.

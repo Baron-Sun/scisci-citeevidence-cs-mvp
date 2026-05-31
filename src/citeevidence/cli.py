@@ -45,6 +45,16 @@ from citeevidence.acl.section_normalization import (
     DEFAULT_SECTION_NORMALIZATION_REPORT,
     normalize_sectioned_sections,
 )
+from citeevidence.analysis import (
+    DEFAULT_PHASE2_ANALYSIS_REPORT,
+    DEFAULT_PHASE2_ANALYSIS_SUMMARY,
+    DEFAULT_PHASE2_CASE_STUDIES,
+    DEFAULT_PHASE2_CONFUSION,
+    DEFAULT_PHASE2_FIGURES_DIR,
+    DEFAULT_PHASE2_QUEUE_PATH,
+    DEFAULT_PHASE2_SOURCE_DATA_DIR,
+    run_phase2_pilot_analysis,
+)
 from citeevidence.config import ConfigLoadError, load_project_config
 from citeevidence.contexts.audit import DEFAULT_CONTEXT_FLAGS_PATH, audit_citation_contexts
 from citeevidence.contexts.extract import (
@@ -174,6 +184,10 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 acl_app = typer.Typer(help="Inspect ACL-OCL raw data layouts.", no_args_is_help=True)
+analysis_app = typer.Typer(
+    help="Run reproducible analysis reports and figures.",
+    no_args_is_help=True,
+)
 config_app = typer.Typer(help="Inspect and validate project configuration.", no_args_is_help=True)
 contexts_app = typer.Typer(help="Extract bounded citation contexts.", no_args_is_help=True)
 datasets_app = typer.Typer(
@@ -200,6 +214,7 @@ DEFAULT_LABELED_REPORT = Path("reports/labeled_dataset_profile.md")
 DEFAULT_ACL_REPORT = Path("reports/acl_ocl_data_inspection.md")
 
 app.add_typer(acl_app, name="acl")
+app.add_typer(analysis_app, name="analysis")
 app.add_typer(config_app, name="config")
 app.add_typer(contexts_app, name="contexts")
 app.add_typer(datasets_app, name="datasets")
@@ -225,7 +240,83 @@ def callback(
 @app.command()
 def status() -> None:
     """Show scaffold status."""
-    console.print("citeevidence scaffold is installed. Real data logic is not implemented yet.")
+    console.print("citeevidence is installed. Phase-1/Phase-2 pilot pipeline is implemented.")
+
+
+@analysis_app.command("phase2-pilot")
+def analyze_phase2_pilot(
+    labels: Annotated[
+        Path,
+        typer.Option("--labels", help="Path to revalidated Phase-2 labels parquet."),
+    ] = DEFAULT_PHASE2_REVALIDATED_PARQUET_PATH,
+    failed_diagnostics: Annotated[
+        Path,
+        typer.Option("--failed-diagnostics", help="Path to Phase-2 failed diagnostics parquet."),
+    ] = DEFAULT_PHASE2_FAILED_DIAGNOSTICS_PATH,
+    failed_jsonl: Annotated[
+        Path,
+        typer.Option("--failed-jsonl", help="Path to remaining failed Phase-2 JSONL."),
+    ] = DEFAULT_PHASE2_FAILED_AFTER_REVALIDATION_PATH,
+    queue: Annotated[
+        Path | None,
+        typer.Option(
+            "--queue",
+            help="Optional Phase-1 queue parquet for enriching failed-row case studies.",
+        ),
+    ] = DEFAULT_PHASE2_QUEUE_PATH,
+    out_report: Annotated[
+        Path,
+        typer.Option("--out-report", help="Output Phase-2 pilot analysis markdown report."),
+    ] = DEFAULT_PHASE2_ANALYSIS_REPORT,
+    out_summary: Annotated[
+        Path,
+        typer.Option("--out-summary", help="Output Phase-2 pilot summary CSV."),
+    ] = DEFAULT_PHASE2_ANALYSIS_SUMMARY,
+    out_case_studies: Annotated[
+        Path,
+        typer.Option("--out-case-studies", help="Output Phase-2 case studies CSV."),
+    ] = DEFAULT_PHASE2_CASE_STUDIES,
+    out_confusion: Annotated[
+        Path,
+        typer.Option(
+            "--out-confusion",
+            help="Output Phase-1 primary intent by Phase-2 final intent confusion CSV.",
+        ),
+    ] = DEFAULT_PHASE2_CONFUSION,
+    figures_dir: Annotated[
+        Path,
+        typer.Option("--figures-dir", help="Output directory for Phase-2 figures."),
+    ] = DEFAULT_PHASE2_FIGURES_DIR,
+    source_data_dir: Annotated[
+        Path,
+        typer.Option("--source-data-dir", help="Output directory for figure source CSVs."),
+    ] = DEFAULT_PHASE2_SOURCE_DATA_DIR,
+) -> None:
+    """Analyze revalidated Phase-2 pilot labels and write report-ready figures."""
+    try:
+        metrics = run_phase2_pilot_analysis(
+            labels_path=labels,
+            failed_diagnostics_path=failed_diagnostics,
+            failed_jsonl_path=failed_jsonl,
+            out_report_path=out_report,
+            out_summary_path=out_summary,
+            out_case_studies_path=out_case_studies,
+            out_confusion_path=out_confusion,
+            figures_dir=figures_dir,
+            source_data_dir=source_data_dir,
+            queue_path=queue,
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        error_console.print(f"[red]Failed to analyze Phase-2 pilot:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    console.print(
+        f"Analyzed {metrics['total_phase2_labels']} Phase-2 labels; "
+        f"remaining failed rows={metrics['total_remaining_failed_rows']}; "
+        f"figures={metrics['figure_count']}. "
+        f"Wrote {out_report}, {out_summary}, {out_case_studies}, {out_confusion}, "
+        f"{figures_dir}, and {source_data_dir}."
+    )
 
 
 @acl_app.command("inspect")

@@ -1,0 +1,13 @@
+metric,value
+total_phase2_labels,582
+total_remaining_failed_rows,18
+final_failure_rate,0.0300
+abstain_count,1
+abstain_rate,0.0017
+evidence_span_non_empty_rate,1.0000
+evidence_span_grounded_rate,1.0000
+phase1_phase2_disagreement_count,133
+phase1_phase2_disagreement_rate,0.2285
+problem_or_motivation_quote_grounded_rate,1.0000
+usage_or_mechanism_quote_grounded_rate,1.0000
+comparison_or_tradeoff_quote_grounded_rate,1.0000
