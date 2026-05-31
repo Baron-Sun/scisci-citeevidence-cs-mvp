@@ -7,6 +7,7 @@ from pathlib import Path
 import pandas as pd
 
 from citeevidence.final_release.metrics import (
+    CRITIQUE_BOTTLENECK_FAMILIES,
     INTENT_ORDER,
     build_ranking_reversal_plot_table,
     classify_object_role_quadrant,
@@ -240,6 +241,78 @@ def plot_context_volume_vs_evidence_use_reversal(
     return outputs
 
 
+def plot_critique_bottleneck_heatmap(
+    data: pd.DataFrame,
+    output_png: str | Path,
+    output_svg: str | Path | None = None,
+    *,
+    min_object_type_total: int = 5,
+) -> dict[str, str]:
+    """Plot an exploratory critique cue-family heatmap."""
+    import matplotlib.pyplot as plt
+
+    title = "Exploratory critique bottlenecks by seed-registry object type"
+    caveat = "Heuristic cue-family map; not a validated bottleneck taxonomy."
+    frame = _prepare_critique_bottleneck_frame(
+        data,
+        min_object_type_total=min_object_type_total,
+    )
+    output_png = Path(output_png)
+    output_png.parent.mkdir(parents=True, exist_ok=True)
+    if output_svg is not None:
+        output_svg = Path(output_svg)
+        output_svg.parent.mkdir(parents=True, exist_ok=True)
+
+    object_types = _critique_object_type_order(frame)
+    families = _critique_family_columns(frame)
+    fig, ax = plt.subplots(
+        figsize=(max(8, len(families) * 1.2), max(4, len(object_types) * 0.5 + 2))
+    )
+    if not object_types or not families:
+        ax.text(0.5, 0.5, "No critique bottleneck data", ha="center", va="center")
+        ax.axis("off")
+    else:
+        value_column = (
+            "lift_vs_global"
+            if "lift_vs_global" in frame
+            else "row_share_within_object_type"
+        )
+        values = _pivot_critique_metric(frame, object_types, families, value_column)
+        shares = _pivot_critique_metric(
+            frame,
+            object_types,
+            families,
+            "row_share_within_object_type",
+        )
+        rows = _pivot_critique_metric(frame, object_types, families, "rows")
+        image = ax.imshow(values.to_numpy(dtype=float), cmap="YlGnBu", aspect="auto")
+        ax.set_xticks(range(len(families)))
+        ax.set_xticklabels(families, rotation=35, ha="right")
+        ax.set_yticks(range(len(object_types)))
+        ax.set_yticklabels(object_types)
+        ax.set_xlabel("Heuristic critique cue family")
+        ax.set_ylabel("Seed-registry object type")
+        ax.set_title(title)
+        fig.colorbar(image, ax=ax, label=value_column.replace("_", " "))
+        _annotate_critique_heatmap(ax, shares, rows)
+
+    fig.text(0.5, 0.01, caveat, ha="center", fontsize=8, color="0.35")
+    fig.tight_layout(rect=(0, 0.04, 1, 1))
+    fig.savefig(output_png, dpi=200, bbox_inches="tight")
+    outputs = {
+        "png": str(output_png),
+        "title": title,
+        "caveat": caveat,
+        "plotted_object_types": "|".join(object_types),
+        "plotted_families": "|".join(families),
+    }
+    if output_svg is not None:
+        fig.savefig(output_svg, bbox_inches="tight")
+        outputs["svg"] = str(output_svg)
+    plt.close(fig)
+    return outputs
+
+
 def _prepare_section_function_frame(
     data: pd.DataFrame,
     *,
@@ -273,6 +346,89 @@ def _prepare_section_function_frame(
     return frame.loc[
         frame["normalized_section"].ne("") & frame["final_intent"].ne("")
     ].copy()
+
+
+def _prepare_critique_bottleneck_frame(
+    data: pd.DataFrame,
+    *,
+    min_object_type_total: int,
+) -> pd.DataFrame:
+    frame = data.copy()
+    columns = [
+        "object_type",
+        "bottleneck_family",
+        "rows",
+        "object_type_total",
+        "row_share_within_object_type",
+        "lift_vs_global",
+    ]
+    for column in columns:
+        if column not in frame:
+            frame[column] = ""
+    frame["object_type"] = frame["object_type"].map(_clean_text).replace("", "unknown")
+    frame["bottleneck_family"] = frame["bottleneck_family"].map(_clean_text)
+    for column in ["rows", "object_type_total", "row_share_within_object_type", "lift_vs_global"]:
+        frame[column] = pd.to_numeric(frame[column], errors="coerce").fillna(0)
+    return frame.loc[
+        frame["object_type"].ne("")
+        & frame["bottleneck_family"].ne("")
+        & frame["object_type_total"].ge(min_object_type_total)
+    ].copy()
+
+
+def _critique_object_type_order(frame: pd.DataFrame) -> list[str]:
+    if frame.empty:
+        return []
+    totals = frame.groupby("object_type", dropna=False)["object_type_total"].max()
+    return sorted(totals.index, key=lambda object_type: (-totals.loc[object_type], object_type))
+
+
+def _critique_family_columns(frame: pd.DataFrame) -> list[str]:
+    if frame.empty:
+        return []
+    observed = {_clean_text(family) for family in frame["bottleneck_family"]}
+    observed.discard("")
+    ordered = [family for family in CRITIQUE_BOTTLENECK_FAMILIES if family in observed]
+    ordered.extend(sorted(observed.difference(CRITIQUE_BOTTLENECK_FAMILIES)))
+    return ordered
+
+
+def _pivot_critique_metric(
+    frame: pd.DataFrame,
+    object_types: list[str],
+    families: list[str],
+    value_column: str,
+) -> pd.DataFrame:
+    matrix = frame.pivot_table(
+        index="object_type",
+        columns="bottleneck_family",
+        values=value_column,
+        aggfunc="first",
+        fill_value=0.0,
+    )
+    return matrix.reindex(index=object_types, columns=families, fill_value=0.0)
+
+
+def _annotate_critique_heatmap(
+    ax: object,
+    share_matrix: pd.DataFrame,
+    count_matrix: pd.DataFrame,
+) -> None:
+    for row_index, object_type in enumerate(share_matrix.index):
+        for column_index, family in enumerate(share_matrix.columns):
+            share = float(share_matrix.loc[object_type, family])
+            rows = int(count_matrix.loc[object_type, family])
+            if rows <= 0 or (share < 0.20 and rows < 5):
+                continue
+            ax.text(
+                column_index,
+                row_index,
+                f"{share:.0%}\n(n={rows})",
+                ha="center",
+                va="center",
+                fontsize=8,
+                color="black",
+            )
 
 
 def _draw_rank_reversal_panel(

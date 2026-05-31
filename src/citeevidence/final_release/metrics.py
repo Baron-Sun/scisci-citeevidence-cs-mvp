@@ -26,6 +26,100 @@ INTENT_COUNT_COLUMNS = {intent: f"{intent}_count" for intent in INTENT_ORDER}
 PAPER_KEY_COLUMNS = ["resolved_cited_acl_id", "resolved_cited_title"]
 OPTIONAL_PAPER_COLUMNS = ["resolved_cited_year", "resolved_cited_authors"]
 ROLE_QUADRANT_RULE_VERSION = "v1_heuristic"
+CRITIQUE_BOTTLENECK_RULE_VERSION = "v1_heuristic_cue_family"
+CRITIQUE_BOTTLENECK_FAMILIES = (
+    "metric_validity",
+    "generalization_domain",
+    "data_resource_requirement",
+    "computational_cost",
+    "scalability",
+    "reproducibility_tooling",
+    "linguistic_coverage",
+    "poor_performance",
+    "failure_limitation",
+    "other",
+)
+CRITIQUE_BOTTLENECK_CUES = {
+    "metric_validity": (
+        "metric",
+        "score",
+        "bleu",
+        "rouge",
+        "does not capture",
+        "correlate",
+        "correlation",
+        "human judgment",
+    ),
+    "generalization_domain": (
+        "generaliz",
+        "domain",
+        "cross-domain",
+        "transfer",
+        "out-of-domain",
+        "robust",
+    ),
+    "data_resource_requirement": (
+        "requires",
+        "require",
+        "data",
+        "resource",
+        "annotation",
+        "annotated",
+        "parallel corpus",
+        "training data",
+    ),
+    "computational_cost": (
+        "computational",
+        "expensive",
+        "memory",
+        "runtime",
+        "latency",
+        "cost",
+        "slow",
+    ),
+    "scalability": (
+        "scalable",
+        "scalability",
+        "large-scale",
+        "scale to",
+        "scaling",
+    ),
+    "reproducibility_tooling": (
+        "reproduc",
+        "implementation",
+        "toolkit",
+        "software",
+        "unavailable",
+        "code",
+    ),
+    "linguistic_coverage": (
+        "language",
+        "multilingual",
+        "morphology",
+        "syntax",
+        "semantic",
+        "lexical",
+    ),
+    "poor_performance": (
+        "poor",
+        "worse",
+        "low performance",
+        "error",
+        "errors",
+        "noisy",
+    ),
+    "failure_limitation": (
+        "fail",
+        "fails",
+        "failure",
+        "cannot",
+        "unable",
+        "limitation",
+        "limited",
+        "drawback",
+        "problem",
+    ),
+}
 
 
 def safe_rate(numerator: int | float, denominator: int | float) -> float:
@@ -308,6 +402,116 @@ def classify_object_role_quadrant(signature_table: pd.DataFrame) -> pd.DataFrame
     )
     frame["role_quadrant_rule_version"] = ROLE_QUADRANT_RULE_VERSION
     return frame[columns].reset_index(drop=True)
+
+
+def classify_critique_bottleneck_family(text: str) -> str:
+    """Classify a critique evidence span into a heuristic cue family."""
+    normalized = _clean(text).casefold()
+    if not normalized:
+        return "other"
+    for family in CRITIQUE_BOTTLENECK_FAMILIES:
+        if family == "other":
+            continue
+        cues = CRITIQUE_BOTTLENECK_CUES[family]
+        if any(cue in normalized for cue in cues):
+            return family
+    return "other"
+
+
+def build_critique_bottleneck_matrix(edges: pd.DataFrame) -> pd.DataFrame:
+    """Build an exploratory critique cue-family matrix by seed-registry object type."""
+    columns = _critique_bottleneck_matrix_columns()
+    critiques = _critique_edges(edges)
+    if critiques.empty:
+        return pd.DataFrame(columns=columns)
+
+    critiques["bottleneck_family"] = critiques["evidence_span"].map(
+        classify_critique_bottleneck_family
+    )
+    observed = (
+        critiques.groupby(["object_type", "bottleneck_family"], dropna=False)
+        .size()
+        .reset_index(name="rows")
+    )
+    object_type_totals = (
+        critiques.groupby("object_type", dropna=False)
+        .size()
+        .reset_index(name="object_type_total")
+    )
+    family_totals = (
+        critiques.groupby("bottleneck_family", dropna=False)
+        .size()
+        .reset_index(name="family_total")
+    )
+    matrix = observed.merge(object_type_totals, on="object_type", how="left")
+    matrix = matrix.merge(family_totals, on="bottleneck_family", how="left")
+    matrix["grand_total"] = len(critiques)
+    for column in ["rows", "object_type_total", "family_total", "grand_total"]:
+        matrix[column] = pd.to_numeric(matrix[column], errors="coerce").fillna(0).astype(int)
+    matrix["row_share_within_object_type"] = _safe_series_rate(
+        matrix["rows"],
+        matrix["object_type_total"],
+    )
+    matrix["row_share_global"] = _safe_series_rate(
+        matrix["family_total"],
+        matrix["grand_total"],
+    )
+    matrix["lift_vs_global"] = _safe_series_rate(
+        matrix["row_share_within_object_type"],
+        matrix["row_share_global"],
+    )
+    matrix["rule_version"] = CRITIQUE_BOTTLENECK_RULE_VERSION
+    matrix["_family_order"] = matrix["bottleneck_family"].map(_critique_family_order())
+    return matrix.sort_values(
+        ["object_type_total", "object_type", "_family_order", "bottleneck_family"],
+        ascending=[False, True, True, True],
+    )[columns].reset_index(drop=True)
+
+
+def build_critique_evidence_cards(
+    edges: pd.DataFrame,
+    *,
+    per_family: int = 2,
+    seed: int = 42,
+) -> pd.DataFrame:
+    """Sample deterministic critique evidence examples for heuristic cue families."""
+    columns = [
+        "bottleneck_family",
+        "object_name",
+        "object_type",
+        "context_id",
+        "normalized_section",
+        "evidence_span",
+        "confidence",
+    ]
+    critiques = _critique_edges(edges)
+    if critiques.empty or per_family <= 0:
+        return pd.DataFrame(columns=columns)
+
+    critiques = critiques.copy()
+    critiques["bottleneck_family"] = critiques["evidence_span"].map(
+        classify_critique_bottleneck_family
+    )
+    critiques["object_name"] = [
+        name or object_id or "unknown"
+        for name, object_id in zip(
+            critiques["canonical_name"],
+            critiques["object_id"],
+            strict=True,
+        )
+    ]
+    samples = []
+    for offset, family in enumerate(CRITIQUE_BOTTLENECK_FAMILIES):
+        family_rows = critiques.loc[critiques["bottleneck_family"].eq(family)]
+        if family_rows.empty:
+            continue
+        take = min(per_family, len(family_rows))
+        samples.append(family_rows.sample(n=take, random_state=seed + offset))
+    if not samples:
+        return pd.DataFrame(columns=columns)
+    cards = pd.concat(samples, ignore_index=True)
+    cards = cards.sort_values(["bottleneck_family", "object_name", "context_id"])
+    return cards[columns].reset_index(drop=True)
 
 
 def build_paper_evidence_use_table(contexts: pd.DataFrame, labels: pd.DataFrame) -> pd.DataFrame:
@@ -614,6 +818,68 @@ def _ranking_reversal_plot_columns() -> list[str]:
         "reversal_type",
         "plot_label",
     ]
+
+
+def _critique_bottleneck_matrix_columns() -> list[str]:
+    return [
+        "object_type",
+        "bottleneck_family",
+        "rows",
+        "object_type_total",
+        "family_total",
+        "grand_total",
+        "row_share_within_object_type",
+        "row_share_global",
+        "lift_vs_global",
+        "rule_version",
+    ]
+
+
+def _critique_edges(edges: pd.DataFrame) -> pd.DataFrame:
+    source_has_context_id = "context_id" in edges
+    frame = _ensure_columns(
+        edges.copy(),
+        [
+            "final_intent",
+            "object_type",
+            "canonical_name",
+            "object_id",
+            "evidence_span",
+            "context_id",
+            "confidence",
+            "normalized_section",
+        ],
+    )
+    text_columns = [
+        "final_intent",
+        "object_type",
+        "canonical_name",
+        "object_id",
+        "evidence_span",
+        "context_id",
+        "normalized_section",
+    ]
+    frame = _clean_text_columns(frame, text_columns)
+    frame["object_type"] = frame["object_type"].replace("", "unknown")
+    frame = frame.loc[frame["final_intent"].eq("critiques")].copy()
+    if frame.empty:
+        return frame
+    if source_has_context_id:
+        with_context = frame.loc[frame["context_id"].ne("")].drop_duplicates(
+            ["context_id", "object_id", "evidence_span"],
+        )
+        without_context = frame.loc[frame["context_id"].eq("")].drop_duplicates(
+            ["object_id", "canonical_name", "evidence_span"],
+        )
+        frame = pd.concat([with_context, without_context], ignore_index=True)
+    else:
+        frame = frame.drop_duplicates(["object_id", "canonical_name", "evidence_span"])
+    frame["confidence"] = pd.to_numeric(frame["confidence"], errors="coerce")
+    return frame
+
+
+def _critique_family_order() -> dict[str, int]:
+    return {family: index for index, family in enumerate(CRITIQUE_BOTTLENECK_FAMILIES)}
 
 
 def _ranking_plot_label(title: object, acl_id: object, max_length: int = 46) -> str:
