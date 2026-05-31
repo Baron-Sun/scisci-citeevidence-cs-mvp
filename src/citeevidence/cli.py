@@ -127,6 +127,15 @@ from citeevidence.phase1 import (
     DEFAULT_PHASE1_REPORT_PILOT_REFINED_PATH,
     screen_phase1_citation_functions,
 )
+from citeevidence.phase1_llm_review import (
+    DEFAULT_PHASE1_LLM_CACHE_DIR,
+    DEFAULT_PHASE1_LLM_RECOMMENDATIONS_REPORT,
+    DEFAULT_PHASE1_LLM_REVIEW_JSONL_PATH,
+    DEFAULT_PHASE1_LLM_REVIEW_PARQUET_PATH,
+    DEFAULT_PHASE1_LLM_REVIEW_REPORT,
+    DEFAULT_PHASE1_LLM_REVIEW_SAMPLE_PATH,
+    run_phase1_llm_review,
+)
 from citeevidence.review import (
     DEFAULT_MANUAL_REVIEW_CLEAN_PATH,
     DEFAULT_MANUAL_REVIEW_NEEDS_CHECK_PATH,
@@ -935,6 +944,110 @@ def review_llm_objects(
         f"Prepared {metrics['sample_rows']} object mention review rows; "
         f"{completed_rows} {mode}. "
         f"Wrote {sample_out}, {jsonl_out}, {parquet_out}, and {report}."
+    )
+
+
+@review_app.command("llm-phase1")
+def review_llm_phase1(
+    candidates: Annotated[
+        Path,
+        typer.Option("--candidates", help="Path to refined Phase-1 candidates parquet."),
+    ] = DEFAULT_PHASE1_CANDIDATES_PILOT_REFINED_PATH,
+    features: Annotated[
+        Path,
+        typer.Option("--features", help="Path to refined Phase-1 features parquet."),
+    ] = DEFAULT_PHASE1_FEATURES_PILOT_REFINED_PATH,
+    contexts: Annotated[
+        Path,
+        typer.Option("--contexts", help="Path to analysis-ready strong contexts parquet."),
+    ] = DEFAULT_PHASE1_CONTEXTS_PATH,
+    object_mentions: Annotated[
+        Path,
+        typer.Option("--object-mentions", help="Path to object mentions parquet."),
+    ] = DEFAULT_PHASE1_OBJECT_MENTIONS_PATH,
+    object_graph_candidates: Annotated[
+        Path,
+        typer.Option("--object-graph-candidates", help="Path to object graph candidates parquet."),
+    ] = DEFAULT_PHASE1_OBJECT_GRAPH_CANDIDATES_PATH,
+    cited_title_profiles: Annotated[
+        Path,
+        typer.Option("--cited-title-profiles", help="Path to cited-title profiles parquet."),
+    ] = DEFAULT_PHASE1_CITED_TITLE_PROFILES_PATH,
+    sample_out: Annotated[
+        Path,
+        typer.Option("--sample-out", help="Output Phase-1 LLM review sample CSV path."),
+    ] = DEFAULT_PHASE1_LLM_REVIEW_SAMPLE_PATH,
+    jsonl_out: Annotated[
+        Path,
+        typer.Option("--jsonl-out", help="Output Phase-1 LLM review JSONL path."),
+    ] = DEFAULT_PHASE1_LLM_REVIEW_JSONL_PATH,
+    parquet_out: Annotated[
+        Path,
+        typer.Option("--parquet-out", help="Output Phase-1 LLM review parquet path."),
+    ] = DEFAULT_PHASE1_LLM_REVIEW_PARQUET_PATH,
+    report: Annotated[
+        Path,
+        typer.Option("--report", help="Output Phase-1 LLM-as-judge report path."),
+    ] = DEFAULT_PHASE1_LLM_REVIEW_REPORT,
+    recommendations: Annotated[
+        Path,
+        typer.Option("--recommendations", help="Output rule recommendations report path."),
+    ] = DEFAULT_PHASE1_LLM_RECOMMENDATIONS_REPORT,
+    cache_dir: Annotated[
+        Path,
+        typer.Option("--cache-dir", help="Local cache directory for model review results."),
+    ] = DEFAULT_PHASE1_LLM_CACHE_DIR,
+    limit: Annotated[
+        int,
+        typer.Option("--limit", min=1, help="Maximum sampled rows to review."),
+    ] = 200,
+    model: Annotated[
+        str | None,
+        typer.Option(
+            "--model",
+            help="OpenAI model name. Defaults to OPENAI_REVIEW_MODEL or project default.",
+        ),
+    ] = None,
+    seed: Annotated[
+        int,
+        typer.Option("--seed", help="Deterministic sampling seed."),
+    ] = 42,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Generate sample and prompts without API calls."),
+    ] = False,
+) -> None:
+    """Run an LLM-as-judge audit for refined Phase-1 candidate labels."""
+    try:
+        metrics = run_phase1_llm_review(
+            candidates_path=candidates,
+            features_path=features,
+            contexts_path=contexts,
+            object_mentions_path=object_mentions,
+            object_graph_candidates_path=object_graph_candidates,
+            cited_title_profiles_path=cited_title_profiles,
+            sample_out=sample_out,
+            jsonl_out=jsonl_out,
+            parquet_out=parquet_out,
+            report_path=report,
+            recommendations_path=recommendations,
+            cache_dir=cache_dir,
+            limit=limit,
+            model=model,
+            seed=seed,
+            dry_run=dry_run,
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        error_console.print(f"[red]Failed to run Phase-1 LLM review:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    mode = "dry-run prompts" if dry_run else "model review rows"
+    completed_rows = metrics["dry_run_prompt_records"] if dry_run else metrics["reviewed_rows"]
+    console.print(
+        f"Prepared {metrics['total_sampled_rows']} Phase-1 review rows; "
+        f"{completed_rows} {mode}. "
+        f"Wrote {sample_out}, {jsonl_out}, {parquet_out}, {report}, and "
+        f"{recommendations}."
     )
 
 
