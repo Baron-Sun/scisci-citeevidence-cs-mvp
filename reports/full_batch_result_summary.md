@@ -124,31 +124,70 @@ Using the local configured `gpt-5.4-mini` Batch rates, the estimated actual cost
 These failed rows are not API failures. They are rows that did not pass the local
 evidence-grounding policy and should be treated as rejected or retry candidates.
 
+## Full Batch QA/Revalidation
+
+Task 10C adds a full Batch failed-row diagnostic pass and a conservative local
+revalidation pass. It only recovers rows whose previous failure was an intent-specific
+cue validator and whose raw model output still passes exact evidence-span validation,
+exact quote validation, evidence_supports_label consistency, and the cited-title-only
+object safeguard.
+
+| metric | value |
+|:--|--:|
+| original successful rows | 236,755 |
+| original failed rows | 69,476 |
+| locally revalidated rows | 942 |
+| remaining failed rows | 68,534 |
+| final successful rows | 237,697 |
+| final success rate | 77.62% |
+| retry manifest rows | 1,799 |
+
+Recovered rows by failure category:
+
+| failure category | recovered rows |
+|:--|--:|
+| use_cue_not_accepted | 511 |
+| compare_cue_not_accepted | 255 |
+| extend_cue_not_accepted | 153 |
+| critique_cue_not_accepted | 23 |
+
+The generated retry manifest targets only `schema_error`, `api_error`, and
+`missing_batch_output` rows. It is prepared locally at
+`data/batch/phase2_retry_batch_manifest.json` and has not been submitted.
+
+Outputs:
+
+- `data/processed/phase2_structured_labels_batch_revalidated.parquet`
+- `data/processed/phase2_structured_labels_batch_failed_after_revalidation.jsonl`
+- `data/processed/phase2_batch_failed_validation_diagnostics.parquet`
+- `reports/phase2_batch_failed_validation_diagnostics.md`
+- `reports/phase2_batch_revalidated_report.md`
+
 ## Updated Full Evidence-Backed Object Graph
 
-After replacing the 582-row pilot labels with the full valid Batch labels, the strict
+After replacing the 582-row pilot labels with the full revalidated Batch labels, the strict
 object graph expanded substantially:
 
-| metric | pilot after pseudo-node fix | full Batch valid labels |
+| metric | pilot after pseudo-node fix | full Batch revalidated labels |
 |:--|--:|--:|
 | strict object nodes | 30 | 33 |
-| strict object edges | 345 | 192,350 |
+| strict object edges | 345 | 193,329 |
 | pseudo nodes | 0 | 0 |
 
 Top strict evidence-backed object nodes:
 
 | object | type | evidence-backed edges |
 |:--|:--|--:|
-| BERT | model | 27,240 |
-| LSTM | model | 18,129 |
-| BLEU | metric | 15,750 |
-| Transformer | model | 14,082 |
-| CRF | method | 12,714 |
-| WordNet | dataset_or_database | 12,061 |
-| seq2seq | model | 8,649 |
-| attention mechanism | method | 8,486 |
-| SemEval | benchmark_or_protocol | 8,294 |
-| HMM | method | 5,899 |
+| BERT | model | 27,386 |
+| LSTM | model | 18,202 |
+| BLEU | metric | 16,005 |
+| Transformer | model | 14,139 |
+| CRF | method | 12,734 |
+| WordNet | dataset_or_database | 12,087 |
+| seq2seq | model | 8,669 |
+| attention mechanism | method | 8,513 |
+| SemEval | benchmark_or_protocol | 8,306 |
+| HMM | method | 5,913 |
 
 The full edge CSV is large (`141MB`) and is kept as a local audit artifact. Reports,
 figures, source data, node tables, and evidence cards are regenerated from the full
@@ -157,7 +196,7 @@ Batch-valid labels.
 ## Interpretation
 
 The project has moved from a 582-label pilot to a large evidence-backed Phase-2
-dataset with 236,755 locally validated structured labels. The difference matters:
+dataset with 237,697 locally validated structured labels after revalidation. The difference matters:
 the previous figures were a prototype over a small validated sample, while the current
 figures are grounded in the full high+medium LLM candidate set after strict local
 evidence validation.
@@ -167,6 +206,5 @@ are rejecting labels whose evidence span, quote fields, or intent cues do not sa
 the project rules. For a course paper, the cleanest claim is:
 
 > We generated 306,231 model-assisted structured citation-function responses through
-> Batch API and retained 236,755 evidence-grounded Phase-2 labels after exact-span and
-> local policy validation.
-
+> Batch API and retained 237,697 evidence-grounded Phase-2 labels after exact-span,
+> local policy validation, and conservative failed-row revalidation.

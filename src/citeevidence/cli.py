@@ -164,17 +164,24 @@ from citeevidence.phase1_llm_review import (
 )
 from citeevidence.phase2 import (
     DEFAULT_PHASE2_BATCH_COST_REPORT,
+    DEFAULT_PHASE2_BATCH_FAILED_AFTER_REVALIDATION_PATH,
+    DEFAULT_PHASE2_BATCH_FAILED_DIAGNOSTICS_PATH,
+    DEFAULT_PHASE2_BATCH_FAILED_DIAGNOSTICS_REPORT,
     DEFAULT_PHASE2_BATCH_FAILED_PATH,
     DEFAULT_PHASE2_BATCH_LABELS_PATH,
     DEFAULT_PHASE2_BATCH_MANIFEST_PATH,
     DEFAULT_PHASE2_BATCH_REPORT,
     DEFAULT_PHASE2_BATCH_REQUESTS_PATH,
+    DEFAULT_PHASE2_BATCH_REVALIDATED_PARQUET_PATH,
+    DEFAULT_PHASE2_BATCH_REVALIDATED_REPORT,
     DEFAULT_PHASE2_BATCH_STATUS_PATH,
     DEFAULT_PHASE2_CACHE_DIR,
     DEFAULT_PHASE2_DRY_RUN_PROMPTS_PATH,
     DEFAULT_PHASE2_FAILED_AFTER_REVALIDATION_PATH,
     DEFAULT_PHASE2_FAILED_DIAGNOSTICS_PATH,
     DEFAULT_PHASE2_FAILED_DIAGNOSTICS_REPORT,
+    DEFAULT_PHASE2_RETRY_BATCH_MANIFEST_PATH,
+    DEFAULT_PHASE2_RETRY_BATCH_REQUESTS_PATH,
     DEFAULT_PHASE2_REVALIDATED_PARQUET_PATH,
     DEFAULT_PHASE2_REVALIDATED_REPORT,
     DEFAULT_PHASE2_REVIEW_SAMPLE_PATH,
@@ -1931,6 +1938,86 @@ def revalidate_phase2_failed(
         f"remaining={metrics['remaining_failed_rows']}. "
         f"Wrote {out_labels}, {out_failed}, {diagnostics}, "
         f"{diagnostics_report}, and {report}."
+    )
+
+
+@phase2_app.command("revalidate-batch-failed")
+def revalidate_phase2_batch_failed(
+    labels: Annotated[
+        Path,
+        typer.Option("--labels", help="Path to full Batch Phase-2 labels parquet."),
+    ] = DEFAULT_PHASE2_BATCH_LABELS_PATH,
+    failed: Annotated[
+        Path,
+        typer.Option("--failed", help="Path to full Batch failed rows JSONL."),
+    ] = DEFAULT_PHASE2_BATCH_FAILED_PATH,
+    high_queue: Annotated[
+        Path,
+        typer.Option("--high-queue", help="Path to high-priority Phase-1 LLM queue."),
+    ] = DEFAULT_PHASE1_LLM_QUEUE_HIGH_PATH,
+    medium_queue: Annotated[
+        Path,
+        typer.Option("--medium-queue", help="Path to medium-priority Phase-1 LLM queue."),
+    ] = DEFAULT_PHASE1_LLM_QUEUE_MEDIUM_PATH,
+    out_labels: Annotated[
+        Path,
+        typer.Option("--out-labels", help="Output revalidated full Batch labels parquet."),
+    ] = DEFAULT_PHASE2_BATCH_REVALIDATED_PARQUET_PATH,
+    out_failed: Annotated[
+        Path,
+        typer.Option("--out-failed", help="Output remaining full Batch failed rows JSONL."),
+    ] = DEFAULT_PHASE2_BATCH_FAILED_AFTER_REVALIDATION_PATH,
+    diagnostics: Annotated[
+        Path,
+        typer.Option("--diagnostics", help="Output full Batch diagnostics parquet."),
+    ] = DEFAULT_PHASE2_BATCH_FAILED_DIAGNOSTICS_PATH,
+    diagnostics_report: Annotated[
+        Path,
+        typer.Option("--diagnostics-report", help="Output diagnostics markdown report."),
+    ] = DEFAULT_PHASE2_BATCH_FAILED_DIAGNOSTICS_REPORT,
+    report: Annotated[
+        Path,
+        typer.Option("--report", help="Output full Batch revalidation markdown report."),
+    ] = DEFAULT_PHASE2_BATCH_REVALIDATED_REPORT,
+    retry_requests: Annotated[
+        Path,
+        typer.Option("--retry-requests", help="Output retry Batch JSONL requests."),
+    ] = DEFAULT_PHASE2_RETRY_BATCH_REQUESTS_PATH,
+    retry_manifest: Annotated[
+        Path,
+        typer.Option("--retry-manifest", help="Output retry Batch manifest JSON."),
+    ] = DEFAULT_PHASE2_RETRY_BATCH_MANIFEST_PATH,
+    model: Annotated[
+        str | None,
+        typer.Option("--model", help="Model name for retry request construction."),
+    ] = None,
+) -> None:
+    """Diagnose and locally revalidate full Phase-2 Batch failed rows."""
+    try:
+        metrics = revalidate_phase2_failed_rows(
+            labels_path=labels,
+            failed_path=failed,
+            queue_paths=[high_queue, medium_queue],
+            out_labels_path=out_labels,
+            out_failed_path=out_failed,
+            diagnostics_path=diagnostics,
+            diagnostics_report_path=diagnostics_report,
+            report_path=report,
+            retry_requests_path=retry_requests,
+            retry_manifest_path=retry_manifest,
+            model=model,
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        error_console.print(f"[red]Failed to revalidate full Batch Phase-2 rows:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    console.print(
+        f"Full Batch revalidated {metrics['revalidated_success_rows']} of "
+        f"{metrics['original_failed_rows']} failed rows; "
+        f"final_success_rate={metrics['final_success_rate']:.3f}; "
+        f"retry_rows={metrics.get('retry_manifest', {}).get('total_rows', 0)}. "
+        f"Wrote {out_labels}, {out_failed}, {diagnostics}, "
+        f"{diagnostics_report}, {report}, and {retry_manifest}."
     )
 
 

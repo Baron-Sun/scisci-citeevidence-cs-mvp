@@ -6,7 +6,7 @@ This is a course-scale object-use graph inspired by evidence-grounded methodolog
 | metric               |   value |
 |:---------------------|--------:|
 | strict_object_nodes  |      33 |
-| strict_object_edges  |  192350 |
+| strict_object_edges  |  193329 |
 | evidence_cards       |      30 |
 | full_object_mentions |  404228 |
 | broad_phase1_objects |      33 |
@@ -14,37 +14,37 @@ This is a course-scale object-use graph inspired by evidence-grounded methodolog
 ## Top Strict Evidence-Backed Object Nodes
 | canonical_name      | object_type           |   evidence_backed_edge_count |   distinct_contexts |   mean_confidence |
 |:--------------------|:----------------------|-----------------------------:|--------------------:|------------------:|
-| BERT                | model                 |                        27240 |               27240 |          0.888088 |
-| LSTM                | model                 |                        18129 |               18129 |          0.887346 |
-| BLEU                | metric                |                        15750 |               15750 |          0.897611 |
-| Transformer         | model                 |                        14082 |               14082 |          0.882529 |
-| CRF                 | method                |                        12714 |               12714 |          0.888367 |
-| WordNet             | dataset_or_database   |                        12061 |               12061 |          0.864241 |
-| seq2seq             | model                 |                         8649 |                8649 |          0.889625 |
-| attention mechanism | method                |                         8486 |                8486 |          0.8785   |
-| SemEval             | benchmark_or_protocol |                         8294 |                8294 |          0.886724 |
-| HMM                 | method                |                         5899 |                5899 |          0.888101 |
-| GloVe               | model                 |                         5835 |                5835 |          0.91122  |
-| Penn Treebank       | dataset_or_database   |                         5810 |                5810 |          0.878539 |
-| ROUGE               | metric                |                         5713 |                5713 |          0.902465 |
-| word2vec            | model                 |                         4684 |                4684 |          0.890339 |
-| ELMo                | model                 |                         4240 |                4240 |          0.893443 |
-| Moses               | software_or_tool      |                         3740 |                3740 |          0.915971 |
-| FrameNet            | dataset_or_database   |                         3705 |                3705 |          0.873552 |
-| METEOR              | metric                |                         3618 |                3618 |          0.909469 |
-| SQuAD               | dataset_or_database   |                         3431 |                3431 |          0.890714 |
-| WMT                 | benchmark_or_protocol |                         3327 |                3327 |          0.883087 |
-| PropBank            | dataset_or_database   |                         2937 |                2937 |          0.872966 |
-| GIZA++              | software_or_tool      |                         2634 |                2634 |          0.902582 |
-| SNLI                | dataset_or_database   |                         2456 |                2456 |          0.879695 |
-| OntoNotes           | dataset_or_database   |                         1979 |                1979 |          0.88807  |
-| GLUE                | benchmark_or_protocol |                         1729 |                1729 |          0.884054 |
-| Stanford CoreNLP    | software_or_tool      |                         1063 |                1063 |          0.920367 |
-| CoNLL-2003          | benchmark_or_protocol |                          828 |                 828 |          0.886159 |
-| MultiNLI            | dataset_or_database   |                          779 |                 779 |          0.884313 |
-| OPUS                | software_or_tool      |                          677 |                 677 |          0.893855 |
-| CoNLL-2012          | benchmark_or_protocol |                          599 |                 599 |          0.886294 |
-| NLTK                | software_or_tool      |                          594 |                 594 |          0.913872 |
+| BERT                | model                 |                        27386 |               27386 |          0.888096 |
+| LSTM                | model                 |                        18202 |               18202 |          0.887259 |
+| BLEU                | metric                |                        16005 |               16005 |          0.897861 |
+| Transformer         | model                 |                        14139 |               14139 |          0.88244  |
+| CRF                 | method                |                        12734 |               12734 |          0.88836  |
+| WordNet             | dataset_or_database   |                        12087 |               12087 |          0.864276 |
+| seq2seq             | model                 |                         8669 |                8669 |          0.889499 |
+| attention mechanism | method                |                         8513 |                8513 |          0.878427 |
+| SemEval             | benchmark_or_protocol |                         8306 |                8306 |          0.886713 |
+| HMM                 | method                |                         5913 |                5913 |          0.888057 |
+| GloVe               | model                 |                         5865 |                5865 |          0.911023 |
+| Penn Treebank       | dataset_or_database   |                         5820 |                5820 |          0.878562 |
+| ROUGE               | metric                |                         5787 |                5787 |          0.902514 |
+| word2vec            | model                 |                         4695 |                4695 |          0.890313 |
+| ELMo                | model                 |                         4254 |                4254 |          0.893427 |
+| Moses               | software_or_tool      |                         3767 |                3767 |          0.915875 |
+| FrameNet            | dataset_or_database   |                         3710 |                3710 |          0.873574 |
+| METEOR              | metric                |                         3688 |                3688 |          0.909732 |
+| SQuAD               | dataset_or_database   |                         3439 |                3439 |          0.890535 |
+| WMT                 | benchmark_or_protocol |                         3345 |                3345 |          0.883214 |
+| PropBank            | dataset_or_database   |                         2944 |                2944 |          0.872959 |
+| GIZA++              | software_or_tool      |                         2660 |                2660 |          0.902673 |
+| SNLI                | dataset_or_database   |                         2461 |                2461 |          0.87976  |
+| OntoNotes           | dataset_or_database   |                         1982 |                1982 |          0.888093 |
+| GLUE                | benchmark_or_protocol |                         1733 |                1733 |          0.884005 |
+| Stanford CoreNLP    | software_or_tool      |                         1069 |                1069 |          0.920533 |
+| CoNLL-2003          | benchmark_or_protocol |                          830 |                 830 |          0.886145 |
+| MultiNLI            | dataset_or_database   |                          780 |                 780 |          0.88441  |
+| OPUS                | software_or_tool      |                          681 |                 681 |          0.893833 |
+| CoNLL-2012          | benchmark_or_protocol |                          600 |                 600 |          0.886217 |
+| NLTK                | software_or_tool      |                          597 |                 597 |          0.913869 |
 | spaCy               | software_or_tool      |                          413 |                 413 |          0.902833 |
 | SuperGLUE           | benchmark_or_protocol |                          255 |                 255 |          0.871961 |
 
@@ -89,10 +89,10 @@ This is a course-scale object-use graph inspired by evidence-grounded methodolog
 | cue_family                    | object_type           |   rows |
 |:------------------------------|:----------------------|-------:|
 | cannot_or_unable              | model                 |    195 |
-| other                         | model                 |    161 |
+| other                         | model                 |    166 |
 | fails                         | metric                |    151 |
+| metric_limitation             | metric                |    103 |
 | poor_performance              | metric                |    101 |
-| metric_limitation             | metric                |     96 |
 | limited_or_limitation         | metric                |     93 |
 | poor_performance              | model                 |     84 |
 | limited_or_limitation         | model                 |     83 |
@@ -101,12 +101,12 @@ This is a course-scale object-use graph inspired by evidence-grounded methodolog
 | drawback_or_problem           | metric                |     69 |
 | cannot_or_unable              | dataset_or_database   |     69 |
 | cannot_or_unable              | metric                |     66 |
+| other                         | dataset_or_database   |     63 |
+| other                         | method                |     63 |
 | drawback_or_problem           | model                 |     63 |
 | limited_or_limitation         | dataset_or_database   |     62 |
-| other                         | dataset_or_database   |     61 |
-| other                         | method                |     61 |
+| other                         | metric                |     30 |
 | fails                         | dataset_or_database   |     30 |
-| other                         | metric                |     29 |
 | poor_performance              | method                |     27 |
 | fails                         | method                |     19 |
 | poor_performance              | dataset_or_database   |     19 |
@@ -117,23 +117,23 @@ This is a course-scale object-use graph inspired by evidence-grounded methodolog
 | cannot_or_unable              | software_or_tool      |     12 |
 | limited_or_limitation         | software_or_tool      |     10 |
 | metric_limitation             | dataset_or_database   |      9 |
-| drawback_or_problem           | method                |      9 |
 | cannot_or_unable              | benchmark_or_protocol |      9 |
+| drawback_or_problem           | method                |      9 |
 | limited_or_limitation         | benchmark_or_protocol |      8 |
+| generalization_or_scalability | dataset_or_database   |      7 |
 | poor_performance              | benchmark_or_protocol |      6 |
-| fails                         | benchmark_or_protocol |      5 |
 | drawback_or_problem           | benchmark_or_protocol |      5 |
-| generalization_or_scalability | dataset_or_database   |      5 |
+| fails                         | benchmark_or_protocol |      5 |
 | fails                         | software_or_tool      |      4 |
 | poor_performance              | software_or_tool      |      3 |
 | metric_limitation             | model                 |      3 |
 | metric_limitation             | method                |      3 |
 | drawback_or_problem           | software_or_tool      |      3 |
 | data_or_resource_requirement  | model                 |      3 |
+| generalization_or_scalability | model                 |      2 |
 | generalization_or_scalability | metric                |      1 |
 | data_or_resource_requirement  | method                |      1 |
 | data_or_resource_requirement  | dataset_or_database   |      1 |
-| generalization_or_scalability | model                 |      1 |
 
 ## Benchmark Metric Network
 | canonical_name   | object_type           | final_intent     |   rows |
@@ -141,51 +141,51 @@ This is a course-scale object-use graph inspired by evidence-grounded methodolog
 | BLEU             | metric                | background       |  10470 |
 | SemEval          | benchmark_or_protocol | background       |   7116 |
 | ROUGE            | metric                | background       |   4011 |
-| BLEU             | metric                | uses             |   3041 |
+| BLEU             | metric                | uses             |   3257 |
 | SQuAD            | dataset_or_database   | background       |   2646 |
 | METEOR           | metric                | background       |   2498 |
 | WMT              | benchmark_or_protocol | background       |   2358 |
-| BLEU             | metric                | compares_against |   1638 |
+| BLEU             | metric                | compares_against |   1665 |
 | GLUE             | benchmark_or_protocol | background       |   1312 |
-| ROUGE            | metric                | uses             |   1079 |
-| METEOR           | metric                | uses             |    713 |
-| WMT              | benchmark_or_protocol | uses             |    623 |
-| SemEval          | benchmark_or_protocol | uses             |    622 |
+| ROUGE            | metric                | uses             |   1141 |
+| METEOR           | metric                | uses             |    779 |
+| WMT              | benchmark_or_protocol | uses             |    632 |
+| SemEval          | benchmark_or_protocol | uses             |    625 |
 | CoNLL-2003       | benchmark_or_protocol | background       |    613 |
-| SQuAD            | dataset_or_database   | uses             |    463 |
-| SemEval          | benchmark_or_protocol | compares_against |    447 |
+| SQuAD            | dataset_or_database   | uses             |    467 |
+| SemEval          | benchmark_or_protocol | compares_against |    455 |
 | CoNLL-2012       | benchmark_or_protocol | background       |    438 |
-| ROUGE            | metric                | compares_against |    422 |
-| BLEU             | metric                | critiques        |    377 |
-| METEOR           | metric                | compares_against |    295 |
-| WMT              | benchmark_or_protocol | compares_against |    269 |
-| SQuAD            | dataset_or_database   | compares_against |    247 |
-| GLUE             | benchmark_or_protocol | uses             |    238 |
+| ROUGE            | metric                | compares_against |    431 |
+| BLEU             | metric                | critiques        |    384 |
+| METEOR           | metric                | compares_against |    299 |
+| WMT              | benchmark_or_protocol | compares_against |    276 |
+| SQuAD            | dataset_or_database   | compares_against |    248 |
+| GLUE             | benchmark_or_protocol | uses             |    239 |
 | SuperGLUE        | benchmark_or_protocol | background       |    228 |
-| BLEU             | metric                | extends          |    172 |
-| ROUGE            | metric                | critiques        |    156 |
-| GLUE             | benchmark_or_protocol | compares_against |    152 |
-| CoNLL-2003       | benchmark_or_protocol | uses             |    145 |
-| CoNLL-2012       | benchmark_or_protocol | uses             |     99 |
+| BLEU             | metric                | extends          |    177 |
+| ROUGE            | metric                | critiques        |    157 |
+| GLUE             | benchmark_or_protocol | compares_against |    154 |
+| CoNLL-2003       | benchmark_or_protocol | uses             |    146 |
+| CoNLL-2012       | benchmark_or_protocol | uses             |    100 |
 | METEOR           | metric                | critiques        |     73 |
-| SemEval          | benchmark_or_protocol | extends          |     70 |
-| CoNLL-2003       | benchmark_or_protocol | compares_against |     61 |
-| WMT              | benchmark_or_protocol | extends          |     54 |
+| SemEval          | benchmark_or_protocol | extends          |     71 |
+| CoNLL-2003       | benchmark_or_protocol | compares_against |     62 |
+| WMT              | benchmark_or_protocol | extends          |     56 |
 | CoNLL-2012       | benchmark_or_protocol | compares_against |     45 |
+| ROUGE            | metric                | extends          |     38 |
 | BLEU             | metric                | applies          |     38 |
-| ROUGE            | metric                | extends          |     36 |
-| SQuAD            | dataset_or_database   | extends          |     31 |
+| SQuAD            | dataset_or_database   | extends          |     34 |
 | METEOR           | metric                | extends          |     30 |
 | SQuAD            | dataset_or_database   | critiques        |     29 |
 | SemEval          | benchmark_or_protocol | critiques        |     24 |
-| GLUE             | benchmark_or_protocol | extends          |     16 |
+| GLUE             | benchmark_or_protocol | extends          |     17 |
 | SemEval          | benchmark_or_protocol | applies          |     15 |
 | SuperGLUE        | benchmark_or_protocol | uses             |     15 |
-| BLEU             | metric                | unclear          |     14 |
 | SQuAD            | dataset_or_database   | applies          |     14 |
+| BLEU             | metric                | unclear          |     14 |
 | WMT              | benchmark_or_protocol | critiques        |     14 |
-| SuperGLUE        | benchmark_or_protocol | compares_against |     10 |
 | CoNLL-2012       | benchmark_or_protocol | extends          |     10 |
+| SuperGLUE        | benchmark_or_protocol | compares_against |     10 |
 | GLUE             | benchmark_or_protocol | critiques        |      8 |
 | CoNLL-2003       | benchmark_or_protocol | extends          |      7 |
 | WMT              | benchmark_or_protocol | applies          |      7 |
@@ -194,8 +194,8 @@ This is a course-scale object-use graph inspired by evidence-grounded methodolog
 | METEOR           | metric                | applies          |      5 |
 | METEOR           | metric                | unclear          |      4 |
 | GLUE             | benchmark_or_protocol | applies          |      3 |
-| CoNLL-2003       | benchmark_or_protocol | applies          |      2 |
 | ROUGE            | metric                | unclear          |      2 |
+| CoNLL-2003       | benchmark_or_protocol | applies          |      2 |
 | WMT              | benchmark_or_protocol | unclear          |      2 |
 | CoNLL-2012       | benchmark_or_protocol | critiques        |      1 |
 

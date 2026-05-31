@@ -222,6 +222,24 @@ citeevidence phase2 collect-batch \
   --report reports/phase2_batch_run_report.md
 ```
 
+Diagnose and locally revalidate full Batch failed rows without calling the API. This also
+prepares a retry manifest for schema/API/missing-output failures, but does not submit it:
+
+```bash
+citeevidence phase2 revalidate-batch-failed \
+  --labels data/processed/phase2_structured_labels_batch.parquet \
+  --failed data/processed/phase2_structured_labels_batch_failed.jsonl \
+  --high-queue data/processed/phase1_llm_queue_high.parquet \
+  --medium-queue data/processed/phase1_llm_queue_medium.parquet \
+  --out-labels data/processed/phase2_structured_labels_batch_revalidated.parquet \
+  --out-failed data/processed/phase2_structured_labels_batch_failed_after_revalidation.jsonl \
+  --diagnostics data/processed/phase2_batch_failed_validation_diagnostics.parquet \
+  --diagnostics-report reports/phase2_batch_failed_validation_diagnostics.md \
+  --report reports/phase2_batch_revalidated_report.md \
+  --retry-requests data/batch/phase2_retry_batch_requests.jsonl \
+  --retry-manifest data/batch/phase2_retry_batch_manifest.json
+```
+
 Before committing after any API work, run a local secret scan over staged text files:
 
 ```bash
@@ -258,7 +276,8 @@ citeevidence analysis phase2-pilot \
 ```
 
 Run the deterministic full-data SciSci analysis. Full Phase-1 counts are candidate-level
-signals; the Phase-2 pilot remains the evidence-backed validated sample:
+signals; the full high+medium Phase-2 Batch labels are the evidence-backed validated
+sample:
 
 ```bash
 citeevidence analysis scisci-full \
@@ -266,7 +285,7 @@ citeevidence analysis scisci-full \
   --object-mentions data/processed/object_mentions.parquet \
   --object-graph-candidates data/processed/object_graph_candidate_mentions.parquet \
   --phase1 data/processed/phase1_citation_function_candidates.parquet \
-  --phase2 data/processed/phase2_structured_labels_pilot_revalidated.parquet \
+  --phase2 data/processed/phase2_structured_labels_batch_revalidated.parquet \
   --out-report reports/scisci_full_data_analysis_report.md \
   --figures-dir figures \
   --source-data-dir figures/source_data
@@ -276,7 +295,7 @@ Build the strict evidence-backed object-use mini graph:
 
 ```bash
 citeevidence analysis object-graph \
-  --phase2 data/processed/phase2_structured_labels_pilot_revalidated.parquet \
+  --phase2 data/processed/phase2_structured_labels_batch_revalidated.parquet \
   --object-graph-candidates data/processed/object_graph_candidate_mentions.parquet \
   --object-mentions data/processed/object_mentions.parquet \
   --phase1 data/processed/phase1_citation_function_candidates.parquet \
@@ -296,7 +315,10 @@ citeevidence analysis object-graph \
 - `data/processed/phase1_citation_function_candidates.parquet`
 - `data/processed/phase1_llm_queue_sample.parquet`
 - `data/processed/phase2_structured_labels_pilot_revalidated.parquet`
+- `data/processed/phase2_structured_labels_batch_revalidated.parquet`
+- `data/processed/phase2_batch_failed_validation_diagnostics.parquet`
 - `reports/phase2_structured_extraction_pilot_revalidated_report.md`
+- `reports/phase2_batch_revalidated_report.md`
 - `reports/phase2_pilot_analysis_report.md`
 - `reports/scisci_full_data_analysis_report.md`
 - `reports/evidence_backed_object_graph_report.md`

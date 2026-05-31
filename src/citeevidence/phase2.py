@@ -74,7 +74,29 @@ DEFAULT_PHASE2_BATCH_FAILED_PATH = Path(
     "data/processed/phase2_structured_labels_batch_failed.jsonl"
 )
 DEFAULT_PHASE2_BATCH_REPORT = Path("reports/phase2_batch_run_report.md")
+DEFAULT_PHASE2_BATCH_REVALIDATED_PARQUET_PATH = Path(
+    "data/processed/phase2_structured_labels_batch_revalidated.parquet"
+)
+DEFAULT_PHASE2_BATCH_FAILED_AFTER_REVALIDATION_PATH = Path(
+    "data/processed/phase2_structured_labels_batch_failed_after_revalidation.jsonl"
+)
+DEFAULT_PHASE2_BATCH_FAILED_DIAGNOSTICS_PATH = Path(
+    "data/processed/phase2_batch_failed_validation_diagnostics.parquet"
+)
+DEFAULT_PHASE2_BATCH_FAILED_DIAGNOSTICS_REPORT = Path(
+    "reports/phase2_batch_failed_validation_diagnostics.md"
+)
+DEFAULT_PHASE2_BATCH_REVALIDATED_REPORT = Path(
+    "reports/phase2_batch_revalidated_report.md"
+)
+DEFAULT_PHASE2_RETRY_BATCH_REQUESTS_PATH = Path(
+    "data/batch/phase2_retry_batch_requests.jsonl"
+)
+DEFAULT_PHASE2_RETRY_BATCH_MANIFEST_PATH = Path(
+    "data/batch/phase2_retry_batch_manifest.json"
+)
 PHASE2_PROMPT_VERSION = "phase2_structured_extraction_v1"
+PHASE2_RETRY_PROMPT_VERSION = "phase2_structured_extraction_retry_failed_v1"
 PHASE2_BATCH_ENDPOINT = "/v1/responses"
 PHASE2_BATCH_COMPLETION_WINDOW = "24h"
 PHASE2_BATCH_MAX_REQUESTS_PER_FILE = 50_000
@@ -220,6 +242,8 @@ PHASE2_FAILED_COLUMNS = [
 
 PHASE2_DIAGNOSTIC_COLUMNS = [
     "context_id",
+    "batch_custom_id",
+    "batch_id",
     "primary_candidate_intent",
     "validation_error",
     "failed_validator_type",
@@ -231,6 +255,15 @@ PHASE2_DIAGNOSTIC_COLUMNS = [
     "evidence_span",
     "raw_response",
 ]
+
+PHASE2_CUE_FAILURE_TYPES = {
+    "compare_cue_not_accepted",
+    "use_cue_not_accepted",
+    "apply_cue_not_accepted",
+    "critique_cue_not_accepted",
+    "extend_cue_not_accepted",
+}
+PHASE2_RETRY_FAILURE_TYPES = {"schema_error", "api_error", "missing_batch_output"}
 
 PHASE2_REVIEW_SAMPLE_COLUMNS = [
     "context_id",
@@ -983,6 +1016,9 @@ def build_phase2_batch_prompt(row: dict[str, Any]) -> tuple[str, str]:
         ],
         "candidate": _batch_prompt_row_payload(row),
     }
+    validation_feedback = _clean(row.get("validation_feedback"))
+    if validation_feedback:
+        payload["validation_feedback_for_retry"] = validation_feedback
     return system_prompt, json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
@@ -1296,18 +1332,22 @@ def revalidate_phase2_failed_rows(
     labels_path: str | Path = DEFAULT_PHASE2_STRUCTURED_PARQUET_PATH,
     failed_path: str | Path = DEFAULT_PHASE2_STRUCTURED_FAILED_PATH,
     queue_path: str | Path = DEFAULT_PHASE1_LLM_QUEUE_SAMPLE_PATH,
+    queue_paths: list[str | Path] | None = None,
     out_labels_path: str | Path = DEFAULT_PHASE2_REVALIDATED_PARQUET_PATH,
     out_failed_path: str | Path = DEFAULT_PHASE2_FAILED_AFTER_REVALIDATION_PATH,
     diagnostics_path: str | Path = DEFAULT_PHASE2_FAILED_DIAGNOSTICS_PATH,
     diagnostics_report_path: str | Path = DEFAULT_PHASE2_FAILED_DIAGNOSTICS_REPORT,
     report_path: str | Path = DEFAULT_PHASE2_REVALIDATED_REPORT,
+    retry_requests_path: str | Path | None = None,
+    retry_manifest_path: str | Path | None = None,
     retry_failed_with_api: bool = False,
     model: str | None = None,
     client: Any | None = None,
     cache_dir: str | Path = DEFAULT_PHASE2_CACHE_DIR,
 ) -> dict[str, Any]:
     """Revalidate failed Phase-2 rows locally after conservative validator calibration."""
-    paths = [Path(labels_path), Path(failed_path), Path(queue_path)]
+    queue_files = [Path(path) for path in (queue_paths or [queue_path])]
+    paths = [Path(labels_path), Path(failed_path), *queue_files]
     for path in paths:
         if not path.exists():
             raise FileNotFoundError(f"Required input does not exist: {path}")
@@ -1315,8 +1355,7 @@ def revalidate_phase2_failed_rows(
     labels = _read_parquet_with_columns(Path(labels_path), PHASE2_RESULT_COLUMNS)
     failed_records = _read_failed_jsonl(Path(failed_path))
     failed = _ensure_columns(pd.DataFrame(failed_records), PHASE2_FAILED_COLUMNS)
-    queue = _read_parquet_with_columns(Path(queue_path), _queue_columns())
-    queue = _ensure_columns(queue, PHASE2_INPUT_COLUMNS)
+    queue = _read_phase2_queue_files(queue_files)
     queue_by_context = {
         str(row["context_id"]): row.to_dict() for _, row in queue.iterrows()
     }
@@ -1324,7 +1363,7 @@ def revalidate_phase2_failed_rows(
     recovered_records: list[dict[str, Any]] = []
     remaining_failed: list[dict[str, Any]] = []
     diagnostics: list[dict[str, Any]] = []
-    review_model = resolve_review_model(model)
+    review_model = resolve_review_model(model) if model else _infer_phase2_model(failed, labels)
 
     for failed_row in failed.to_dict(orient="records"):
         context_id = _clean(failed_row.get("context_id"))
@@ -1350,6 +1389,10 @@ def revalidate_phase2_failed_rows(
             final_intent = decision.final_intent
             final_object_type = decision.final_object_type
             evidence_span = decision.evidence_span
+            if failure_type not in PHASE2_CUE_FAILURE_TYPES:
+                raise ValueError(
+                    f"not eligible for local cue revalidation: {failure_type}"
+                )
             validate_phase2_decision(decision, queue_row)
             record = _phase2_result_record_from_decision(
                 row=queue_row,
@@ -1376,6 +1419,8 @@ def revalidate_phase2_failed_rows(
         diagnostics.append(
             {
                 "context_id": context_id,
+                "batch_custom_id": _clean(failed_row.get("batch_custom_id")),
+                "batch_id": _clean(failed_row.get("batch_id")),
                 "primary_candidate_intent": _clean(failed_row.get("primary_candidate_intent")),
                 "validation_error": original_error,
                 "failed_validator_type": failure_type,
@@ -1387,6 +1432,17 @@ def revalidate_phase2_failed_rows(
                 "evidence_span": evidence_span,
                 "raw_response": _clean(failed_row.get("raw_response")),
             }
+        )
+
+    retry_manifest: dict[str, Any] | None = None
+    if retry_requests_path is not None and retry_manifest_path is not None:
+        retry_manifest = write_phase2_failed_retry_batch_manifest(
+            remaining_failed=remaining_failed,
+            queue_by_context=queue_by_context,
+            out_jsonl_path=Path(retry_requests_path),
+            manifest_path=Path(retry_manifest_path),
+            model=review_model,
+            source_failed_path=Path(failed_path),
         )
 
     if retry_failed_with_api and remaining_failed:
@@ -1488,6 +1544,8 @@ def revalidate_phase2_failed_rows(
         diagnostics=diagnostics_df,
         remaining_failed=remaining_df,
     )
+    if retry_manifest is not None:
+        metrics["retry_manifest"] = retry_manifest
     diagnostics_report.write_text(
         build_phase2_failed_diagnostics_report(
             diagnostics=diagnostics_df,
@@ -1505,6 +1563,7 @@ def revalidate_phase2_failed_rows(
             out_labels_path=out_labels,
             out_failed_path=out_failed,
             diagnostics_path=diagnostics_out,
+            retry_manifest=retry_manifest,
         ),
         encoding="utf-8",
     )
@@ -2045,13 +2104,19 @@ def build_phase2_revalidation_metrics(
     remaining = int(len(remaining_failed))
     final_success = int(len(revalidated_labels))
     total = final_success + remaining
+    original_total = original_success + original_failed_rows
     return {
+        "original_total_rows": original_total,
         "original_successful_rows": original_success,
         "original_failed_rows": original_failed_rows,
+        "original_success_rate": _safe_rate(original_success, original_total),
+        "original_failure_rate": _safe_rate(original_failed_rows, original_total),
         "revalidated_success_rows": recovered,
         "remaining_failed_rows": remaining,
+        "final_total_rows": total,
         "final_successful_rows": final_success,
         "final_failed_rows": remaining,
+        "final_success_rate": _safe_rate(final_success, total),
         "final_failure_rate": _safe_rate(remaining, total),
         "recovered_by_failure_category": _value_counts(
             diagnostics.loc[diagnostics["revalidated"].map(_bool_value)]
@@ -2072,9 +2137,24 @@ def build_phase2_revalidation_metrics(
             ["primary_candidate_intent", "failed_validator_type"],
             "rows",
         ),
+        "failure_category_by_batch_file": _value_counts(
+            diagnostics,
+            ["batch_id", "failed_validator_type"],
+            "rows",
+        ),
+        "original_final_intent_distribution": _value_counts(
+            original_labels,
+            ["final_intent"],
+            "rows",
+        ),
         "final_intent_distribution": _value_counts(
             revalidated_labels,
             ["final_intent"],
+            "rows",
+        ),
+        "final_object_type_distribution": _value_counts(
+            revalidated_labels,
+            ["final_object_type"],
             "rows",
         ),
         "evidence_supports_label_distribution": _value_counts(
@@ -2093,6 +2173,7 @@ def build_phase2_revalidation_metrics(
             "cited_title_only_object_rejected",
             revalidated=False,
         ),
+        "missing_batch_output_custom_ids": _missing_batch_output_custom_ids(diagnostics),
     }
 
 
@@ -2106,6 +2187,14 @@ def build_phase2_failed_diagnostics_report(
     core = pd.DataFrame(
         [
             {"metric": "diagnostic_rows", "value": int(len(diagnostics))},
+            {
+                "metric": "cue_failure_rows",
+                "value": int(
+                    diagnostics["failed_validator_type"].isin(PHASE2_CUE_FAILURE_TYPES).sum()
+                )
+                if "failed_validator_type" in diagnostics
+                else 0,
+            },
             {
                 "metric": "revalidated_success_rows",
                 "value": metrics["revalidated_success_rows"],
@@ -2133,6 +2222,9 @@ def build_phase2_failed_diagnostics_report(
             "## Failure Category By Phase-1 Intent",
             _table(metrics["failure_category_by_phase1_intent"]),
             "",
+            "## Failure Category By Batch File",
+            _table(metrics["failure_category_by_batch_file"]),
+            "",
             "## Recovered By Failure Category",
             _table(metrics["recovered_by_failure_category"]),
             "",
@@ -2158,43 +2250,80 @@ def build_phase2_revalidated_report(
     out_labels_path: Path,
     out_failed_path: Path,
     diagnostics_path: Path,
+    retry_manifest: dict[str, Any] | None = None,
 ) -> str:
     """Build the Phase-2 pilot report after local failed-row revalidation."""
     core = pd.DataFrame(
         [
+            {"metric": "original_total_rows", "value": metrics["original_total_rows"]},
             {
                 "metric": "original_successful_rows",
                 "value": metrics["original_successful_rows"],
             },
             {"metric": "original_failed_rows", "value": metrics["original_failed_rows"]},
             {
+                "metric": "original_success_rate",
+                "value": f"{metrics['original_success_rate']:.3f}",
+            },
+            {
                 "metric": "revalidated_success_rows",
                 "value": metrics["revalidated_success_rows"],
             },
             {"metric": "remaining_failed_rows", "value": metrics["remaining_failed_rows"]},
+            {"metric": "final_total_rows", "value": metrics["final_total_rows"]},
             {"metric": "final_successful_rows", "value": metrics["final_successful_rows"]},
             {"metric": "final_failed_rows", "value": metrics["final_failed_rows"]},
+            {"metric": "final_success_rate", "value": f"{metrics['final_success_rate']:.3f}"},
             {"metric": "final_failure_rate", "value": f"{metrics['final_failure_rate']:.3f}"},
         ]
     )
-    return "\n".join(
+    retry_rows = []
+    if retry_manifest is not None:
+        retry_rows = [
+            {"metric": "retry_manifest", "value": retry_manifest.get("manifest_path", "")},
+            {
+                "metric": "retry_requests",
+                "value": retry_manifest.get("request_files", [{}])[0].get("path", "")
+                if retry_manifest.get("request_files")
+                else retry_manifest.get("out_jsonl_path", ""),
+            },
+            {"metric": "retry_rows", "value": retry_manifest.get("total_rows", 0)},
+        ]
+    sections = [
+        "# Phase-2 Structured Extraction Revalidated Report",
+        "",
+        "Local revalidation keeps substring validation, quote substring validation, "
+        "cited-title-only safeguards, and evidence_supports_label consistency intact. "
+        "It only recovers rows whose previous failure was an intent-specific cue "
+        "validator and whose raw model output now passes the calibrated local validators.",
+        "",
+        "## Outputs",
+        f"- Revalidated labels: `{out_labels_path}`",
+        f"- Remaining failed rows: `{out_failed_path}`",
+        f"- Failed diagnostics: `{diagnostics_path}`",
+        "",
+        "## Core Metrics",
+        _table(core),
+        "",
+    ]
+    if retry_rows:
+        sections.extend(
+            [
+                "## Retry Manifest",
+                _table(pd.DataFrame(retry_rows)),
+                "",
+            ]
+        )
+    sections.extend(
         [
-            "# Phase-2 Structured Extraction Revalidated Report",
-            "",
-            "Local revalidation keeps substring validation, cited-title-only safeguards, "
-            "and evidence_supports_label consistency intact. It only recovers rows whose "
-            "raw model output is valid under calibrated intent cue validators.",
-            "",
-            "## Outputs",
-            f"- Revalidated labels: `{out_labels_path}`",
-            f"- Remaining failed rows: `{out_failed_path}`",
-            f"- Failed diagnostics: `{diagnostics_path}`",
-            "",
-            "## Core Metrics",
-            _table(core),
+            "## Final Intent Distribution Before Revalidation",
+            _table(metrics["original_final_intent_distribution"]),
             "",
             "## Final Intent Distribution After Revalidation",
             _table(metrics["final_intent_distribution"]),
+            "",
+            "## Final Object Type Distribution After Revalidation",
+            _table(metrics["final_object_type_distribution"]),
             "",
             "## Evidence Supports Label Distribution",
             _table(metrics["evidence_supports_label_distribution"]),
@@ -2207,6 +2336,15 @@ def build_phase2_revalidated_report(
             "",
             "## Remaining By Failure Category",
             _table(metrics["remaining_by_failure_category"]),
+            "",
+            "## Failure Category By Phase-1 Intent",
+            _table(metrics["failure_category_by_phase1_intent"]),
+            "",
+            "## Failure Category By Batch File",
+            _table(metrics["failure_category_by_batch_file"]),
+            "",
+            "## Missing Batch Output Custom IDs",
+            _table(pd.DataFrame({"batch_custom_id": metrics["missing_batch_output_custom_ids"]})),
             "",
             "## Recovered Compare Examples",
             _table(_recovered_examples(revalidated_labels, diagnostics, "compares_against", 5)),
@@ -2228,6 +2366,7 @@ def build_phase2_revalidated_report(
             "",
         ]
     )
+    return "\n".join(sections)
 
 
 def _phase2_result_record_from_decision(
@@ -2476,6 +2615,8 @@ def _object_summary(frame: pd.DataFrame | None) -> pd.DataFrame:
 def classify_phase2_validation_failure(validation_error: str) -> str:
     """Map a validation error message to a stable diagnostic category."""
     text = _clean(validation_error).casefold()
+    if "missing_batch_output" in text or "not present in downloaded output files" in text:
+        return "missing_batch_output"
     if "compares_against requires compare evidence" in text:
         return "compare_cue_not_accepted"
     if "uses requires current-paper use evidence" in text:
@@ -2492,7 +2633,17 @@ def classify_phase2_validation_failure(validation_error: str) -> str:
         return "quote_not_substring"
     if "cited-title-only object" in text:
         return "cited_title_only_object_rejected"
-    if any(token in text for token in ("ratelimit", "timeout", "connection", "server error")):
+    if any(
+        token in text
+        for token in (
+            "ratelimit",
+            "rate limit",
+            "timeout",
+            "connection",
+            "server error",
+            "batch_response_status",
+        )
+    ):
         return "api_error"
     if any(token in text for token in ("validation error", "field required", "invalid json")):
         return "schema_error"
@@ -2508,7 +2659,92 @@ def _candidate_repair_action(failure_type: str) -> str:
         return "keep_failed_direct_context_object_evidence_required"
     if failure_type in {"schema_error", "api_error"}:
         return "retry_api_or_schema"
+    if failure_type == "missing_batch_output":
+        return "retry_missing_batch_output"
     return "manual_review"
+
+
+def _read_phase2_queue_files(paths: list[Path]) -> pd.DataFrame:
+    frames = [_read_parquet_with_columns(path, _queue_columns()) for path in paths]
+    queue = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    queue = queue.drop_duplicates(subset=["context_id"], keep="first")
+    queue = _ensure_columns(queue, PHASE2_INPUT_COLUMNS)
+    return queue[PHASE2_INPUT_COLUMNS]
+
+
+def _infer_phase2_model(failed: pd.DataFrame, labels: pd.DataFrame) -> str:
+    for frame, column in ((failed, "model"), (labels, "model_used"), (labels, "model")):
+        if column not in frame or frame.empty:
+            continue
+        values = frame[column].map(_clean)
+        values = values.loc[values.ne("")]
+        if not values.empty:
+            return values.mode().iloc[0]
+    return resolve_review_model(None)
+
+
+def write_phase2_failed_retry_batch_manifest(
+    *,
+    remaining_failed: list[dict[str, Any]],
+    queue_by_context: dict[str, dict[str, Any]],
+    out_jsonl_path: Path,
+    manifest_path: Path,
+    model: str,
+    source_failed_path: Path,
+) -> dict[str, Any]:
+    """Prepare retry Batch requests for API/schema/missing-output failures only."""
+    retry_rows = []
+    for failed_row in remaining_failed:
+        failure_type = _clean(failed_row.get("failed_validator_type"))
+        if failure_type not in PHASE2_RETRY_FAILURE_TYPES:
+            continue
+        context_id = _clean(failed_row.get("context_id"))
+        if not context_id or context_id not in queue_by_context:
+            continue
+        retry_row = {
+            **queue_by_context[context_id],
+            "prompt_version": PHASE2_RETRY_PROMPT_VERSION,
+            "model": model,
+            "validation_feedback": (
+                f"Previous validator failure: {_clean(failed_row.get('validation_error'))}. "
+                f"Failure category: {failure_type}. "
+                "Return a corrected structured label only if exact evidence_span and "
+                "quote fields can be grounded in sentence_text/context_window_s3; "
+                "otherwise abstain."
+            ),
+        }
+        retry_rows.append(retry_row)
+
+    out_jsonl_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    request_files = (
+        write_phase2_batch_request_files(
+            pd.DataFrame(retry_rows),
+            out_jsonl_path=out_jsonl_path,
+            model=model,
+        )
+        if retry_rows
+        else []
+    )
+    if not retry_rows:
+        out_jsonl_path.write_text("", encoding="utf-8")
+    manifest = {
+        "created_at": _utc_now(),
+        "workflow": "phase2_batch_failed_retry",
+        "endpoint": PHASE2_BATCH_ENDPOINT,
+        "completion_window": PHASE2_BATCH_COMPLETION_WINDOW,
+        "model": model,
+        "prompt_version": PHASE2_RETRY_PROMPT_VERSION,
+        "source_failed_path": str(source_failed_path),
+        "eligible_failure_types": sorted(PHASE2_RETRY_FAILURE_TYPES),
+        "total_rows": len(retry_rows),
+        "out_jsonl_path": str(out_jsonl_path),
+        "request_files": request_files,
+        "submit_status": "not_submitted",
+        "manifest_path": str(manifest_path),
+    }
+    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    return manifest
 
 
 def _read_failed_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -2950,6 +3186,21 @@ def _count_failure_type(diagnostics: pd.DataFrame, failure_type: str, *, revalid
     return int(mask.sum())
 
 
+def _missing_batch_output_custom_ids(diagnostics: pd.DataFrame) -> list[str]:
+    if diagnostics.empty or "failed_validator_type" not in diagnostics:
+        return []
+    frame = diagnostics.loc[
+        diagnostics["failed_validator_type"].eq("missing_batch_output")
+    ].copy()
+    if frame.empty or "batch_custom_id" not in frame:
+        return []
+    return [
+        custom_id
+        for custom_id in frame["batch_custom_id"].map(_clean).tolist()
+        if custom_id
+    ]
+
+
 def _phase2_examples(results: pd.DataFrame, intent: str, limit: int) -> pd.DataFrame:
     if results.empty:
         return _empty_examples()
@@ -3170,7 +3421,19 @@ def _has_current_paper_use_cue(text: str) -> bool:
         return True
     if re.search(
         r"\bwe\s+(?:will\s+)?(?:use|used|follow|followed|employ|employed|incorporate|"
-        r"incorporated)\b",
+        r"incorporated|combine|combined)\b",
+        lowered,
+    ):
+        return True
+    if re.search(
+        r"\bwe\s+(?:perform|performed|conduct|conducted|evaluate|evaluated|compute|"
+        r"computed|measure|measured)\b.*\busing\b",
+        lowered,
+    ):
+        return True
+    if re.search(
+        r"\bour\s+(?:method|approach|model|system|parser|tagger|experiments?)\s+"
+        r"(?:uses?|employs?|utili[sz]es?|relies?\s+on)\b",
         lowered,
     ):
         return True
@@ -3222,6 +3485,8 @@ def _has_current_paper_use_cue(text: str) -> bool:
             "we implement",
             "we make use of",
             "we rely on",
+            "we combine",
+            "we combined",
             "we train with",
             "we trained with",
             "we train using",
@@ -3229,9 +3494,13 @@ def _has_current_paper_use_cue(text: str) -> bool:
             "we evaluate on",
             "we evaluated on",
             "our model uses",
+            "our method uses",
+            "our approach uses",
             "our system uses",
             "our system employs",
             "our experiments use",
+            "use them for",
+            "uses bert",
             "employs the",
             "employs a",
             "follow the",
@@ -3266,6 +3535,10 @@ def _has_compare_cue(text: str) -> bool:
         return True
     if re.search(r"\bsame\b.*\bas\b", lowered):
         return True
+    if re.search(r"\bcomparable\b.*\bto\b", lowered):
+        return True
+    if re.search(r"\beffect\s+of\b.*\bon\b", lowered):
+        return True
     if re.search(r"\bfewer\b.*\b(?:than|as)\b", lowered):
         return True
     return _contains_any(
@@ -3299,6 +3572,11 @@ def _has_compare_cue(text: str) -> bool:
             "in contrast to",
             "while in our work",
             "similar to",
+            "comparable to",
+            "different embedding",
+            "different feature",
+            "effect of using",
+            "effect of the",
             "same data set",
             "same dataset",
             "same coverage as",
@@ -3320,6 +3598,12 @@ def _has_compare_cue(text: str) -> bool:
 def _has_extend_cue(text: str) -> bool:
     lowered = text.casefold()
     if re.search(r"\bwe\s+propose\b.*\bbased on\b", lowered):
+        return True
+    if re.search(r"\binspired\s+by\b", lowered):
+        return True
+    if re.search(r"\bmajor\s+differences?\b", lowered):
+        return True
+    if re.search(r"\bunlike\s+the\s+original\b", lowered):
         return True
     return _contains_any(
         text,
@@ -3352,9 +3636,13 @@ def _has_extend_cue(text: str) -> bool:
             "builds upon",
             "built upon",
             "based on",
+            "inspired by",
             "variant of",
             "extension of",
             "our extension",
+            "unlike the original",
+            "major difference",
+            "major differences",
         ),
     )
 
@@ -3382,8 +3670,15 @@ def _has_critique_cue(text: str) -> bool:
             "worse",
             "does not capture",
             "does not handle",
+            "not reliable",
+            "not known to work well",
+            "not work well",
             "does not",
             "do not",
+            "lacks",
+            "lack of",
+            "low quality",
+            "blandness",
             "is limited by",
             "not taken into account",
             "not able",

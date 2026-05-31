@@ -663,6 +663,12 @@ def test_phase2_failure_classifier_maps_expected_categories() -> None:
         )
         == "quote_not_substring"
     )
+    assert (
+        classify_phase2_validation_failure(
+            "missing_batch_output: custom_id not present in downloaded output files"
+        )
+        == "missing_batch_output"
+    )
 
 
 def test_phase2_revalidation_recovers_cue_failures_and_keeps_strict_failures(
@@ -804,6 +810,145 @@ def test_phase2_revalidate_cli_exposes_retry_flag() -> None:
     result = CliRunner().invoke(app, ["phase2", "revalidate-failed", "--help"])
     assert result.exit_code == 0
     assert "--retry-failed-with-api" in result.output
+
+
+def test_phase2_batch_revalidation_writes_retry_manifest(tmp_path: Path) -> None:
+    original_row = _queue_row("ctx_original")
+    recover_row = _queue_row(
+        "ctx_recover",
+        sentence_text="Our method uses BERT-large with only 340 million parameters.",
+        primary_candidate_intent="uses",
+    )
+    strict_row = _queue_row(
+        "ctx_strict",
+        sentence_text="We use BERT for tagging.",
+        primary_candidate_intent="uses",
+    )
+    schema_row = _queue_row(
+        "ctx_schema",
+        sentence_text="We use BERT for tagging.",
+        primary_candidate_intent="uses",
+    )
+    missing_row = _queue_row(
+        "ctx_missing",
+        sentence_text="We use BERT for tagging.",
+        primary_candidate_intent="uses",
+    )
+    labels_path = tmp_path / "labels.parquet"
+    failed_path = tmp_path / "failed.jsonl"
+    high_queue = tmp_path / "high.parquet"
+    medium_queue = tmp_path / "medium.parquet"
+    out_labels = tmp_path / "labels_revalidated.parquet"
+    out_failed = tmp_path / "failed_after.jsonl"
+    diagnostics = tmp_path / "diagnostics.parquet"
+    diagnostics_report = tmp_path / "diagnostics.md"
+    report = tmp_path / "revalidated.md"
+    retry_requests = tmp_path / "retry.jsonl"
+    retry_manifest = tmp_path / "retry_manifest.json"
+    pd.DataFrame([_result_record(original_row, _valid_decision())]).to_parquet(
+        labels_path,
+        index=False,
+    )
+    pd.DataFrame([original_row, recover_row]).to_parquet(high_queue, index=False)
+    pd.DataFrame([strict_row, schema_row, missing_row]).to_parquet(
+        medium_queue,
+        index=False,
+    )
+    recover_decision = _valid_decision(
+        evidence_span="Our method uses BERT-large",
+        usage_or_mechanism_quote="Our method uses BERT-large",
+    )
+    strict_decision = _valid_decision(evidence_span="not an exact span")
+    failed_records = [
+        {
+            **_failed_record(
+                recover_row,
+                recover_decision,
+                "final_intent=uses requires current-paper use evidence",
+            ),
+            "batch_custom_id": "phase2:ctx_recover:phase2_test",
+            "batch_id": "batch_a",
+        },
+        {
+            **_failed_record(
+                strict_row,
+                strict_decision,
+                "evidence_span is not an exact substring of evidence fields",
+            ),
+            "batch_custom_id": "phase2:ctx_strict:phase2_test",
+            "batch_id": "batch_a",
+        },
+        {
+            "context_id": "ctx_schema",
+            "cache_key": "schema",
+            "prompt_version": "phase2_test",
+            "model": "fixture-model",
+            "primary_candidate_intent": "uses",
+            "validation_error": "1 validation error for Phase2StructuredLabel",
+            "raw_response": '{"final_intent":"bad"}',
+            "attempts": 1,
+            "batch_custom_id": "phase2:ctx_schema:phase2_test",
+            "batch_id": "batch_b",
+        },
+        {
+            "context_id": "ctx_missing",
+            "cache_key": "missing",
+            "prompt_version": "phase2_test",
+            "model": "fixture-model",
+            "primary_candidate_intent": "uses",
+            "validation_error": (
+                "missing_batch_output: custom_id not present in downloaded output files"
+            ),
+            "raw_response": "",
+            "attempts": 0,
+            "batch_custom_id": "phase2:ctx_missing:phase2_test",
+            "batch_id": "",
+        },
+    ]
+    failed_path.write_text(
+        "\n".join(json.dumps(record) for record in failed_records) + "\n",
+        encoding="utf-8",
+    )
+
+    metrics = revalidate_phase2_failed_rows(
+        labels_path=labels_path,
+        failed_path=failed_path,
+        queue_paths=[high_queue, medium_queue],
+        out_labels_path=out_labels,
+        out_failed_path=out_failed,
+        diagnostics_path=diagnostics,
+        diagnostics_report_path=diagnostics_report,
+        report_path=report,
+        retry_requests_path=retry_requests,
+        retry_manifest_path=retry_manifest,
+        model="fixture-model",
+    )
+
+    revalidated = pd.read_parquet(out_labels)
+    diagnostics_frame = pd.read_parquet(diagnostics)
+    retry = json.loads(retry_manifest.read_text(encoding="utf-8"))
+    assert metrics["revalidated_success_rows"] == 1
+    assert metrics["remaining_failed_rows"] == 3
+    assert set(revalidated["context_id"]) == {"ctx_original", "ctx_recover"}
+    assert retry["total_rows"] == 2
+    assert retry_requests.read_text(encoding="utf-8").count("\n") == 2
+    assert set(diagnostics_frame["failed_validator_type"]) == {
+        "use_cue_not_accepted",
+        "evidence_span_not_substring",
+        "schema_error",
+        "missing_batch_output",
+    }
+    assert metrics["missing_batch_output_custom_ids"] == [
+        "phase2:ctx_missing:phase2_test"
+    ]
+    assert "Failure Category By Batch File" in diagnostics_report.read_text(encoding="utf-8")
+    assert "Retry Manifest" in report.read_text(encoding="utf-8")
+
+
+def test_phase2_revalidate_batch_cli_has_expected_defaults() -> None:
+    result = CliRunner().invoke(app, ["phase2", "revalidate-batch-failed", "--help"])
+    assert result.exit_code == 0
+    assert "--retry-manifest" in result.output
 
 
 class _TransientError(Exception):
