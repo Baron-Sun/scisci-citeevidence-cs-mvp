@@ -2,6 +2,7 @@
 
 from citeevidence.final_release.claims import ClaimRecord, EvidenceRecord
 from citeevidence.final_release.figures import (
+    plot_context_volume_vs_evidence_use_reversal,
     plot_object_role_signature_map,
     plot_section_function_lift_heatmap,
 )
@@ -10,6 +11,7 @@ from citeevidence.final_release.metrics import (
     add_shrunk_evidence_use_share,
     build_object_role_signature,
     build_paper_evidence_use_table,
+    build_ranking_reversal_plot_table,
     build_section_function_counts,
     build_section_function_lift,
     classify_object_role_quadrant,
@@ -39,6 +41,7 @@ __all__ = [
     "build_label_quality_summary",
     "build_object_role_signature",
     "build_paper_evidence_use_table",
+    "build_ranking_reversal_plot_table",
     "build_section_function_counts",
     "build_section_function_lift",
     "build_stratified_qa_sample",
@@ -48,6 +51,7 @@ __all__ = [
     "filter_ranking_reversal_eligible",
     "format_section_label",
     "maybe_read_csv",
+    "plot_context_volume_vs_evidence_use_reversal",
     "plot_object_role_signature_map",
     "plot_section_function_lift_heatmap",
     "summarize_confidence_by_intent",

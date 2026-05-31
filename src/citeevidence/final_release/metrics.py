@@ -422,6 +422,64 @@ def compute_ranking_reversal(table: pd.DataFrame) -> pd.DataFrame:
     return frame
 
 
+def build_ranking_reversal_plot_table(
+    ranking: pd.DataFrame,
+    *,
+    top_n: int = 20,
+    min_total_contexts: int = 20,
+    min_evidence_use_count: int = 5,
+    mode: str = "count",
+) -> pd.DataFrame:
+    """Build an eligible citation-context volume vs evidence-use plot table."""
+    columns = _ranking_reversal_plot_columns()
+    if mode not in {"count", "shrunk_share"}:
+        raise ValueError("mode must be 'count' or 'shrunk_share'")
+
+    frame = filter_ranking_reversal_eligible(
+        ranking,
+        min_total_contexts=min_total_contexts,
+        min_evidence_use_count=min_evidence_use_count,
+    )
+    if frame.empty or top_n <= 0:
+        return pd.DataFrame(columns=columns)
+
+    frame = compute_ranking_reversal(frame)
+    frame = _ensure_columns(frame, columns)
+    numeric_columns = [
+        "total_strong_contexts",
+        "evidence_use_count",
+        "evidence_use_share",
+        "shrunk_evidence_use_share",
+        "background_share",
+        "rank_by_context_volume",
+        "rank_by_evidence_use_count",
+        "rank_by_shrunk_evidence_use_share",
+        "rank_difference_count",
+        "rank_difference_shrunk_share",
+    ]
+    for column in numeric_columns:
+        frame[column] = pd.to_numeric(frame[column], errors="coerce").fillna(0)
+    sort_column = (
+        "rank_difference_count"
+        if mode == "count"
+        else "rank_difference_shrunk_share"
+    )
+    frame["_abs_rank_difference"] = frame[sort_column].abs()
+    frame["plot_label"] = [
+        _ranking_plot_label(title, acl_id)
+        for title, acl_id in zip(
+            frame["resolved_cited_title"],
+            frame["resolved_cited_acl_id"],
+            strict=True,
+        )
+    ]
+    frame = frame.sort_values(
+        ["_abs_rank_difference", "total_strong_contexts", "plot_label"],
+        ascending=[False, False, True],
+    ).head(top_n)
+    return frame[columns].reset_index(drop=True)
+
+
 def _build_label_counts(labels: pd.DataFrame) -> pd.DataFrame:
     label_columns = ["context_id", *PAPER_KEY_COLUMNS, "final_intent"]
     labels_small = _ensure_columns(labels.copy(), label_columns)
@@ -537,6 +595,35 @@ def _object_role_signature_columns(include_quadrant: bool) -> list[str]:
     if include_quadrant:
         columns.extend(["role_quadrant", "role_quadrant_rule_version"])
     return columns
+
+
+def _ranking_reversal_plot_columns() -> list[str]:
+    return [
+        "resolved_cited_acl_id",
+        "resolved_cited_title",
+        "total_strong_contexts",
+        "evidence_use_count",
+        "evidence_use_share",
+        "shrunk_evidence_use_share",
+        "background_share",
+        "rank_by_context_volume",
+        "rank_by_evidence_use_count",
+        "rank_by_shrunk_evidence_use_share",
+        "rank_difference_count",
+        "rank_difference_shrunk_share",
+        "reversal_type",
+        "plot_label",
+    ]
+
+
+def _ranking_plot_label(title: object, acl_id: object, max_length: int = 46) -> str:
+    label = _clean(title) or _clean(acl_id) or "Untitled cited paper"
+    if len(label) <= max_length:
+        return label
+    prefix = label[: max_length - 1].rstrip()
+    if " " in prefix:
+        prefix = prefix.rsplit(" ", 1)[0]
+    return f"{prefix.rstrip('.,;:')}..."
 
 
 def _deduplicate_object_edges(

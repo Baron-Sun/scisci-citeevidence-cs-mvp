@@ -6,7 +6,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from citeevidence.final_release.metrics import INTENT_ORDER, classify_object_role_quadrant
+from citeevidence.final_release.metrics import (
+    INTENT_ORDER,
+    build_ranking_reversal_plot_table,
+    classify_object_role_quadrant,
+)
 
 
 def planned_figure_modules() -> tuple[str, ...]:
@@ -181,6 +185,61 @@ def plot_object_role_signature_map(
     return outputs
 
 
+def plot_context_volume_vs_evidence_use_reversal(
+    data: pd.DataFrame,
+    output_png: str | Path,
+    output_svg: str | Path | None = None,
+    *,
+    top_n: int = 20,
+    mode: str = "count",
+) -> dict[str, str]:
+    """Plot citation-context volume vs evidence-use ranking reversals."""
+    import matplotlib.pyplot as plt
+
+    table = build_ranking_reversal_plot_table(data, top_n=top_n, mode=mode)
+    title = "Citation-context volume and evidence use rank papers differently"
+    left_label = "Rank by citation-context volume"
+    right_label = (
+        "Rank by evidence-use count"
+        if mode == "count"
+        else "Rank by shrunk evidence-use share"
+    )
+    footnote = "Default eligibility: total_strong_contexts >= 20 and evidence_use_count >= 5"
+    output_png = Path(output_png)
+    output_png.parent.mkdir(parents=True, exist_ok=True)
+    if output_svg is not None:
+        output_svg = Path(output_svg)
+        output_svg.parent.mkdir(parents=True, exist_ok=True)
+
+    fig, ax = plt.subplots(figsize=(9, max(4, len(table) * 0.42 + 1.8)))
+    if table.empty:
+        ax.text(0.5, 0.5, "No eligible ranking reversal rows", ha="center", va="center")
+        ax.axis("off")
+    else:
+        right_rank_column = (
+            "rank_by_evidence_use_count"
+            if mode == "count"
+            else "rank_by_shrunk_evidence_use_share"
+        )
+        _draw_rank_reversal_panel(ax, table, right_rank_column=right_rank_column)
+    ax.set_title(title, pad=18)
+    fig.text(0.5, 0.01, footnote, ha="center", fontsize=8, color="0.35")
+    fig.tight_layout(rect=(0, 0.04, 1, 1))
+    fig.savefig(output_png, dpi=200, bbox_inches="tight")
+    outputs = {
+        "png": str(output_png),
+        "plotted_rows": str(len(table)),
+        "title": title,
+        "left_label": left_label,
+        "right_label": right_label,
+    }
+    if output_svg is not None:
+        fig.savefig(output_svg, bbox_inches="tight")
+        outputs["svg"] = str(output_svg)
+    plt.close(fig)
+    return outputs
+
+
 def _prepare_section_function_frame(
     data: pd.DataFrame,
     *,
@@ -214,6 +273,62 @@ def _prepare_section_function_frame(
     return frame.loc[
         frame["normalized_section"].ne("") & frame["final_intent"].ne("")
     ].copy()
+
+
+def _draw_rank_reversal_panel(
+    ax: object,
+    table: pd.DataFrame,
+    *,
+    right_rank_column: str,
+) -> None:
+    y_positions = list(range(len(table)))
+    colors = table["reversal_type"].map(
+        {
+            "evidence-use riser": "#2a9d8f",
+            "context-volume riser": "#e76f51",
+            "balanced": "#6c757d",
+        }
+    ).fillna("#6c757d")
+    ax.hlines(y_positions, 0, 1, color="0.82", linewidth=1.4)
+    ax.scatter([0] * len(table), y_positions, s=52, color="#577590", zorder=3)
+    ax.scatter([1] * len(table), y_positions, s=52, color=colors, zorder=3)
+    for y_position, (_, row) in zip(y_positions, table.iterrows(), strict=True):
+        ax.text(
+            -0.06,
+            y_position,
+            f"#{int(row['rank_by_context_volume'])}",
+            ha="right",
+            va="center",
+            fontsize=8,
+            color="0.25",
+        )
+        ax.text(
+            1.06,
+            y_position,
+            f"#{int(row[right_rank_column])}",
+            ha="left",
+            va="center",
+            fontsize=8,
+            color="0.25",
+        )
+    ax.set_xlim(-0.22, 1.22)
+    ax.set_ylim(-0.8, len(table) - 0.2)
+    ax.set_yticks(y_positions)
+    ax.set_yticklabels(table["plot_label"])
+    ax.invert_yaxis()
+    ax.set_xticks([0, 1])
+    ax.set_xticklabels(
+        ["Rank by citation-context volume", _right_rank_axis_label(right_rank_column)]
+    )
+    ax.tick_params(axis="x", length=0)
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
+
+def _right_rank_axis_label(right_rank_column: str) -> str:
+    if right_rank_column == "rank_by_shrunk_evidence_use_share":
+        return "Rank by shrunk evidence-use share"
+    return "Rank by evidence-use count"
 
 
 def _prepare_object_role_frame(
