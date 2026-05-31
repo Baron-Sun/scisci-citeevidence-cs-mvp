@@ -325,6 +325,13 @@ def test_phase2_non_abstain_requires_evidence_supports_true() -> None:
         )
 
 
+def test_phase2_non_abstain_accepts_evidence_supports_true_with_valid_span() -> None:
+    validate_phase2_decision(
+        _valid_decision(evidence_supports_label="true", evidence_span="we use"),
+        _queue_row(),
+    )
+
+
 def test_phase2_abstain_accepts_false_evidence_support_with_low_confidence() -> None:
     decision = _valid_decision(
         final_intent="unclear",
@@ -335,6 +342,23 @@ def test_phase2_abstain_accepts_false_evidence_support_with_low_confidence() -> 
         evidence_span="",
         usage_or_mechanism_quote=None,
         evidence_supports_label="false",
+        abstain=True,
+        abstain_reason="insufficient_evidence",
+        confidence=0.2,
+    )
+    validate_phase2_decision(decision, _queue_row())
+
+
+def test_phase2_abstain_accepts_unclear_evidence_support_with_low_confidence() -> None:
+    decision = _valid_decision(
+        final_intent="unclear",
+        final_object_type="unknown",
+        final_relation_subtype="none",
+        method_edge_type="not_method_related",
+        stance="unclear",
+        evidence_span="",
+        usage_or_mechanism_quote=None,
+        evidence_supports_label="unclear",
         abstain=True,
         abstain_reason="insufficient_evidence",
         confidence=0.2,
