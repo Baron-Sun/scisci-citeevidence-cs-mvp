@@ -35,6 +35,12 @@ from citeevidence.final_release.qa import (
     validate_forbidden_claims,
     validate_required_caveats,
 )
+from citeevidence.final_release.report import (
+    build_final_release_figure_manifest,
+    build_final_release_limitations,
+    build_final_release_report,
+    validate_final_release_report_text,
+)
 
 __all__ = [
     "ClaimRecord",
@@ -44,6 +50,9 @@ __all__ = [
     "add_shrunk_evidence_use_share",
     "build_critique_bottleneck_matrix",
     "build_critique_evidence_cards",
+    "build_final_release_figure_manifest",
+    "build_final_release_limitations",
+    "build_final_release_report",
     "build_label_quality_summary",
     "build_object_role_signature",
     "build_paper_evidence_use_table",
@@ -66,6 +75,7 @@ __all__ = [
     "summarize_failure_categories",
     "validate_citation_context_volume_terms",
     "validate_evidence_grounding",
+    "validate_final_release_report_text",
     "validate_forbidden_claims",
     "validate_required_caveats",
     "write_source_csv",
