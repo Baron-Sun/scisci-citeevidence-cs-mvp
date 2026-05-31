@@ -148,11 +148,17 @@ from citeevidence.phase1_llm_review import (
 from citeevidence.phase2 import (
     DEFAULT_PHASE2_CACHE_DIR,
     DEFAULT_PHASE2_DRY_RUN_PROMPTS_PATH,
+    DEFAULT_PHASE2_FAILED_AFTER_REVALIDATION_PATH,
+    DEFAULT_PHASE2_FAILED_DIAGNOSTICS_PATH,
+    DEFAULT_PHASE2_FAILED_DIAGNOSTICS_REPORT,
+    DEFAULT_PHASE2_REVALIDATED_PARQUET_PATH,
+    DEFAULT_PHASE2_REVALIDATED_REPORT,
     DEFAULT_PHASE2_REVIEW_SAMPLE_PATH,
     DEFAULT_PHASE2_STRUCTURED_FAILED_PATH,
     DEFAULT_PHASE2_STRUCTURED_JSONL_PATH,
     DEFAULT_PHASE2_STRUCTURED_PARQUET_PATH,
     DEFAULT_PHASE2_STRUCTURED_REPORT,
+    revalidate_phase2_failed_rows,
     run_phase2_structured_extraction,
 )
 from citeevidence.review import (
@@ -1326,6 +1332,79 @@ def extract_phase2_structured(
         f"{completed} {mode}; failed={metrics['failed_rows']}. "
         f"Wrote {jsonl_out}, {parquet_out}, {failed_out}, {dry_run_prompts_out}, "
         f"{review_sample}, and {report}."
+    )
+
+
+@phase2_app.command("revalidate-failed")
+def revalidate_phase2_failed(
+    labels: Annotated[
+        Path,
+        typer.Option("--labels", help="Path to Phase-2 structured labels parquet."),
+    ] = DEFAULT_PHASE2_STRUCTURED_PARQUET_PATH,
+    failed: Annotated[
+        Path,
+        typer.Option("--failed", help="Path to Phase-2 failed rows JSONL."),
+    ] = DEFAULT_PHASE2_STRUCTURED_FAILED_PATH,
+    queue: Annotated[
+        Path,
+        typer.Option("--queue", help="Path to Phase-1 LLM queue sample parquet."),
+    ] = DEFAULT_PHASE1_LLM_QUEUE_SAMPLE_PATH,
+    out_labels: Annotated[
+        Path,
+        typer.Option("--out-labels", help="Output revalidated Phase-2 labels parquet."),
+    ] = DEFAULT_PHASE2_REVALIDATED_PARQUET_PATH,
+    out_failed: Annotated[
+        Path,
+        typer.Option("--out-failed", help="Output remaining failed rows JSONL."),
+    ] = DEFAULT_PHASE2_FAILED_AFTER_REVALIDATION_PATH,
+    diagnostics: Annotated[
+        Path,
+        typer.Option("--diagnostics", help="Output failed validation diagnostics parquet."),
+    ] = DEFAULT_PHASE2_FAILED_DIAGNOSTICS_PATH,
+    diagnostics_report: Annotated[
+        Path,
+        typer.Option("--diagnostics-report", help="Output failed diagnostics markdown report."),
+    ] = DEFAULT_PHASE2_FAILED_DIAGNOSTICS_REPORT,
+    report: Annotated[
+        Path,
+        typer.Option("--report", help="Output revalidated Phase-2 markdown report."),
+    ] = DEFAULT_PHASE2_REVALIDATED_REPORT,
+    retry_failed_with_api: Annotated[
+        bool,
+        typer.Option("--retry-failed-with-api", help="Retry remaining failed rows with API."),
+    ] = False,
+    model: Annotated[
+        str | None,
+        typer.Option(
+            "--model",
+            help="OpenAI model name for optional failed-row retry.",
+        ),
+    ] = None,
+) -> None:
+    """Diagnose and locally revalidate failed Phase-2 structured extraction rows."""
+    try:
+        metrics = revalidate_phase2_failed_rows(
+            labels_path=labels,
+            failed_path=failed,
+            queue_path=queue,
+            out_labels_path=out_labels,
+            out_failed_path=out_failed,
+            diagnostics_path=diagnostics,
+            diagnostics_report_path=diagnostics_report,
+            report_path=report,
+            retry_failed_with_api=retry_failed_with_api,
+            model=model,
+        )
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        error_console.print(f"[red]Failed to revalidate Phase-2 failed rows:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    console.print(
+        f"Revalidated {metrics['revalidated_success_rows']} of "
+        f"{metrics['original_failed_rows']} failed rows; "
+        f"remaining={metrics['remaining_failed_rows']}. "
+        f"Wrote {out_labels}, {out_failed}, {diagnostics}, "
+        f"{diagnostics_report}, and {report}."
     )
 
 

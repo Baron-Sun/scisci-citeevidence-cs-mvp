@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -15,8 +16,10 @@ from citeevidence.phase2 import (
     build_phase2_metrics,
     build_phase2_report,
     build_phase2_review_sample,
+    classify_phase2_validation_failure,
     extract_phase2_sample_row,
     phase2_structured_cache_key,
+    revalidate_phase2_failed_rows,
     validate_phase2_decision,
 )
 
@@ -129,6 +132,59 @@ def _write_inputs(tmp_path: Path, rows: list[dict[str, object]] | None = None) -
         graph_path,
         title_profiles_path,
     )
+
+
+def _result_record(row: dict[str, object], decision: Phase2StructuredLabel) -> dict[str, object]:
+    record = {
+        **row,
+        "prompt_version": PHASE2_PROMPT_VERSION,
+        "model": "fixture-model",
+        "cache_key": phase2_structured_cache_key(
+            {**row, "prompt_version": PHASE2_PROMPT_VERSION, "model": "fixture-model"}
+        ),
+        "sample_row_id": f"sample_{row['context_id']}",
+        "final_intent": decision.final_intent,
+        "final_object_type": decision.final_object_type,
+        "final_relation_subtype": decision.final_relation_subtype,
+        "method_edge_type": decision.method_edge_type,
+        "stance": decision.stance,
+        "evidence_span_phase2": decision.evidence_span,
+        "problem_or_motivation_quote": decision.problem_or_motivation_quote,
+        "usage_or_mechanism_quote": decision.usage_or_mechanism_quote,
+        "comparison_or_tradeoff_quote": decision.comparison_or_tradeoff_quote,
+        "evidence_supports_label": decision.evidence_supports_label,
+        "abstain": decision.abstain,
+        "abstain_reason": decision.abstain_reason,
+        "phase2_confidence": decision.confidence,
+        "rationale_short": decision.rationale_short,
+        "review_status": "structured_extracted",
+        "validation_error": "",
+        "attempts": 1,
+        "from_cache": False,
+        "model_used": "fixture-model",
+        "input_tokens": 1,
+        "output_tokens": 1,
+        "total_tokens": 2,
+    }
+    return record
+
+
+def _failed_record(
+    row: dict[str, object],
+    decision: Phase2StructuredLabel,
+    validation_error: str,
+) -> dict[str, object]:
+    prepared = {**row, "prompt_version": PHASE2_PROMPT_VERSION, "model": "fixture-model"}
+    return {
+        "context_id": row["context_id"],
+        "cache_key": phase2_structured_cache_key(prepared),
+        "prompt_version": PHASE2_PROMPT_VERSION,
+        "model": "fixture-model",
+        "primary_candidate_intent": row["primary_candidate_intent"],
+        "validation_error": validation_error,
+        "raw_response": decision.model_dump_json(),
+        "attempts": 2,
+    }
 
 
 def test_phase2_dry_run_cli_creates_prompts_without_api_key(tmp_path: Path) -> None:
@@ -570,6 +626,162 @@ def test_phase2_cache_key_is_deterministic() -> None:
     assert phase2_structured_cache_key(row) != phase2_structured_cache_key(changed)
 
 
+def test_phase2_failure_classifier_maps_expected_categories() -> None:
+    assert (
+        classify_phase2_validation_failure(
+            "final_intent=compares_against requires compare evidence"
+        )
+        == "compare_cue_not_accepted"
+    )
+    assert (
+        classify_phase2_validation_failure(
+            "usage_or_mechanism_quote is not an exact substring"
+        )
+        == "quote_not_substring"
+    )
+
+
+def test_phase2_revalidation_recovers_cue_failures_and_keeps_strict_failures(
+    tmp_path: Path,
+) -> None:
+    original_row = _queue_row("ctx_original")
+    compare_row = _queue_row(
+        "ctx_compare",
+        sentence_text="The new system performs worse than the PB-SMT baseline.",
+        primary_candidate_intent="compares_against",
+    )
+    use_row = _queue_row(
+        "ctx_use_recover",
+        sentence_text="The encoder is initialized with BERT representations.",
+        primary_candidate_intent="uses",
+    )
+    bad_span_row = _queue_row(
+        "ctx_bad_span",
+        sentence_text="We use BERT for tagging.",
+        primary_candidate_intent="uses",
+    )
+    title_only_row = _queue_row(
+        "ctx_title_only",
+        sentence_text="This improves tagging accuracy.",
+        primary_candidate_intent="extends",
+        object_type_source="cited_title_profile",
+        object_names="",
+        graph_candidate_object_names="",
+        cited_title_profile_object_names="BERT",
+    )
+    quote_bad_row = _queue_row(
+        "ctx_quote_bad",
+        sentence_text="We use BERT for tagging.",
+        primary_candidate_intent="uses",
+    )
+    queue = pd.DataFrame(
+        [original_row, compare_row, use_row, bad_span_row, title_only_row, quote_bad_row]
+    )
+    labels = pd.DataFrame(
+        [_result_record(original_row, _valid_decision())],
+        columns=PHASE2_RESULT_COLUMNS,
+    )
+    compare_decision = _valid_decision(
+        final_intent="compares_against",
+        final_object_type="method",
+        final_relation_subtype="compare_against",
+        method_edge_type="compares",
+        evidence_span="performs worse than",
+        usage_or_mechanism_quote=None,
+        comparison_or_tradeoff_quote="performs worse than",
+    )
+    use_decision = _valid_decision(
+        evidence_span="initialized with BERT",
+        usage_or_mechanism_quote="initialized with BERT",
+    )
+    bad_span_decision = _valid_decision(evidence_span="not an exact span")
+    title_only_decision = _valid_decision(
+        final_intent="extends",
+        final_object_type="model",
+        final_relation_subtype="improve",
+        method_edge_type="improves",
+        evidence_span="improves",
+        usage_or_mechanism_quote=None,
+    )
+    quote_bad_decision = _valid_decision(usage_or_mechanism_quote="missing quote")
+    failed_records = [
+        _failed_record(
+            compare_row,
+            compare_decision,
+            "final_intent=compares_against requires compare evidence",
+        ),
+        _failed_record(
+            use_row,
+            use_decision,
+            "final_intent=uses requires current-paper use evidence",
+        ),
+        _failed_record(
+            bad_span_row,
+            bad_span_decision,
+            "evidence_span is not an exact substring of evidence fields",
+        ),
+        _failed_record(
+            title_only_row,
+            title_only_decision,
+            "cited-title-only object type cannot be used as direct evidence",
+        ),
+        _failed_record(
+            quote_bad_row,
+            quote_bad_decision,
+            "usage_or_mechanism_quote is not an exact substring of evidence fields",
+        ),
+    ]
+    labels_path = tmp_path / "labels.parquet"
+    failed_path = tmp_path / "failed.jsonl"
+    queue_path = tmp_path / "queue.parquet"
+    out_labels = tmp_path / "labels_revalidated.parquet"
+    out_failed = tmp_path / "failed_after.jsonl"
+    diagnostics = tmp_path / "diagnostics.parquet"
+    diagnostics_report = tmp_path / "diagnostics.md"
+    report = tmp_path / "revalidated.md"
+    labels.to_parquet(labels_path, index=False)
+    queue.to_parquet(queue_path, index=False)
+    failed_path.write_text(
+        "\n".join(json.dumps(record) for record in failed_records) + "\n",
+        encoding="utf-8",
+    )
+
+    metrics = revalidate_phase2_failed_rows(
+        labels_path=labels_path,
+        failed_path=failed_path,
+        queue_path=queue_path,
+        out_labels_path=out_labels,
+        out_failed_path=out_failed,
+        diagnostics_path=diagnostics,
+        diagnostics_report_path=diagnostics_report,
+        report_path=report,
+    )
+
+    revalidated = pd.read_parquet(out_labels)
+    diagnostics_frame = pd.read_parquet(diagnostics)
+    remaining = out_failed.read_text(encoding="utf-8").splitlines()
+    assert metrics["revalidated_success_rows"] == 2
+    assert metrics["remaining_failed_rows"] == 3
+    assert set(revalidated["context_id"]) == {"ctx_original", "ctx_compare", "ctx_use_recover"}
+    assert diagnostics_frame.loc[
+        diagnostics_frame["context_id"].eq("ctx_compare"),
+        "revalidated",
+    ].iloc[0]
+    assert len(remaining) == 3
+    assert "Phase-2 Failed Validation Diagnostics" in diagnostics_report.read_text(
+        encoding="utf-8"
+    )
+    assert "Phase-2 Structured Extraction Revalidated Report" in report.read_text(
+        encoding="utf-8"
+    )
+
+
+def test_phase2_revalidate_cli_exposes_retry_flag() -> None:
+    result = CliRunner().invoke(app, ["phase2", "revalidate-failed", "--help"])
+    assert result.exit_code == 0
+    assert "--retry-failed-with-api" in result.output
+
+
 class _TransientError(Exception):
     status_code = 429
 
@@ -603,6 +815,67 @@ class _FakeResponses:
 class _FakeClient:
     def __init__(self, outcomes: list[object]) -> None:
         self.responses = _FakeResponses(outcomes)
+
+
+def test_phase2_revalidate_retry_uses_fake_client_for_remaining_failed(
+    tmp_path: Path,
+) -> None:
+    original_row = _queue_row("ctx_original")
+    retry_row = _queue_row(
+        "ctx_retry",
+        sentence_text="In this paper, we use BERT for tagging.",
+        primary_candidate_intent="uses",
+    )
+    labels_path = tmp_path / "labels.parquet"
+    failed_path = tmp_path / "failed.jsonl"
+    queue_path = tmp_path / "queue.parquet"
+    out_labels = tmp_path / "labels_revalidated.parquet"
+    out_failed = tmp_path / "failed_after.jsonl"
+    diagnostics = tmp_path / "diagnostics.parquet"
+    diagnostics_report = tmp_path / "diagnostics.md"
+    report = tmp_path / "revalidated.md"
+    pd.DataFrame([_result_record(original_row, _valid_decision())]).to_parquet(
+        labels_path,
+        index=False,
+    )
+    pd.DataFrame([original_row, retry_row]).to_parquet(queue_path, index=False)
+    failed_path.write_text(
+        json.dumps(
+            _failed_record(
+                retry_row,
+                _valid_decision(evidence_span="not an exact span"),
+                "evidence_span is not an exact substring of evidence fields",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    client = _FakeClient([_FakeResponse(_valid_decision())])
+
+    metrics = revalidate_phase2_failed_rows(
+        labels_path=labels_path,
+        failed_path=failed_path,
+        queue_path=queue_path,
+        out_labels_path=out_labels,
+        out_failed_path=out_failed,
+        diagnostics_path=diagnostics,
+        diagnostics_report_path=diagnostics_report,
+        report_path=report,
+        retry_failed_with_api=True,
+        model="fixture-model",
+        client=client,
+        cache_dir=tmp_path / "cache",
+    )
+
+    revalidated = pd.read_parquet(out_labels)
+    assert metrics["revalidated_success_rows"] == 1
+    assert metrics["remaining_failed_rows"] == 0
+    assert set(revalidated["context_id"]) == {"ctx_original", "ctx_retry"}
+    assert (
+        revalidated.loc[revalidated["context_id"].eq("ctx_retry"), "review_status"].iloc[0]
+        == "api_retry_after_failed_validation"
+    )
+    assert out_failed.read_text(encoding="utf-8") == ""
 
 
 def test_phase2_transient_failure_then_success_has_attempts_two(tmp_path: Path) -> None:
